@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc && node dist/build.js",
+    "build": "tsc && node .build/build.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@countrystatecity/countries": "^1.0.9",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

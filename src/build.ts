@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { getCitiesOfState, type ICity } from "@countrystatecity/countries";
 import type * as XLSXType from "xlsx";
 
 const require = createRequire(import.meta.url);
@@ -28,9 +29,11 @@ interface LocationRecord {
 
 const ROOT = process.cwd();
 const INPUT_DIR = path.join(ROOT, "input");
-const HTML_PATH = path.join(ROOT, "Signers Heat Map.html");
-const OUTPUT_CSV_PATH = path.join(ROOT, "signer_city_locations.csv");
-const COORDINATES_PATH = path.join(ROOT, "data", "city_coordinates.csv");
+const OUTPUT_DIR = path.join(ROOT, "dist");
+const HTML_TEMPLATE_PATH = path.join(ROOT, "src", "template.html");
+const HTML_OUTPUT_PATH = path.join(OUTPUT_DIR, "index.html");
+const OUTPUT_CSV_PATH = path.join(OUTPUT_DIR, "signer_city_locations.csv");
+const OVERRIDES_PATH = path.join(ROOT, "data", "city_overrides.csv");
 
 const PAPER_WORKBOOK = path.join(INPUT_DIR, "SFIW Petition.xlsx");
 const ONLINE_EXPORT = path.join(INPUT_DIR, "petition_signatures_jobs_491242344_20260725164505.csv.xls");
@@ -49,6 +52,13 @@ const CITY_FIXES = new Map<string, string>([
   ["racine", "Racine"],
   ["s. elgin", "South Elgin"],
   ["los angles", "Los Angeles"]
+]);
+
+const CITY_ALIASES = new Map<CountKey, CountKey>([
+  ["De Kalb|IL", "DeKalb|IL"],
+  ["Fuquay-Varina|NC", "Fuquay-Varina|NC"],
+  ["St. Charles|IL", "Saint Charles|IL"],
+  ["Village of Lakewood|IL", "Lakewood|IL"]
 ]);
 
 const STATE_FIXES = new Map<string, string>([
@@ -190,8 +200,10 @@ function readOnlineExport(counts: Map<CountKey, number>, counties: Map<CountKey,
   return added;
 }
 
-function readCoordinates(): Map<CountKey, CoordinateRow> {
-  const text = fs.readFileSync(COORDINATES_PATH, "utf8");
+function readCoordinateOverrides(): Map<CountKey, CoordinateRow> {
+  if (!fs.existsSync(OVERRIDES_PATH)) return new Map();
+
+  const text = fs.readFileSync(OVERRIDES_PATH, "utf8");
   const records = parseDelimited(text, ",");
   const coordinates = new Map<CountKey, CoordinateRow>();
 
@@ -214,12 +226,41 @@ function readCoordinates(): Map<CountKey, CoordinateRow> {
   return coordinates;
 }
 
+function cityDatasetKey(city: string, state: string): CountKey {
+  return CITY_ALIASES.get(keyFor(city, state)) ?? keyFor(city, state);
+}
+
+const stateCityCache = new Map<string, Promise<ICity[]>>();
+
+async function getStateCities(state: string): Promise<ICity[]> {
+  if (!stateCityCache.has(state)) {
+    stateCityCache.set(state, getCitiesOfState("US", state));
+  }
+  return stateCityCache.get(state)!;
+}
+
+async function findDatasetCoordinate(city: string, state: string): Promise<CoordinateRow | undefined> {
+  const [lookupCity, lookupState] = cityDatasetKey(city, state).split("|");
+  const cities = await getStateCities(lookupState);
+  const match = cities.find((candidate) => candidate.name.toLowerCase() === lookupCity.toLowerCase());
+  if (!match) return undefined;
+
+  return {
+    city,
+    county: "",
+    state,
+    latitude: Number(match.latitude),
+    longitude: Number(match.longitude),
+    coordinateSource: "@countrystatecity/countries"
+  };
+}
+
 function mostCommonCounty(countyCounts: Map<string, number> | undefined): string {
   if (!countyCounts) return "";
   return [...countyCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? "";
 }
 
-function buildLocations(): { locations: LocationRecord[]; sources: Record<string, number> } {
+async function buildLocations(): Promise<{ locations: LocationRecord[]; sources: Record<string, number> }> {
   const counts = new Map<CountKey, number>();
   const counties = new Map<CountKey, Map<string, number>>();
   const sources = {
@@ -231,27 +272,29 @@ function buildLocations(): { locations: LocationRecord[]; sources: Record<string
     throw new Error(`No signer input rows found. Put source sheets in ${path.relative(ROOT, INPUT_DIR)}.`);
   }
 
-  const coordinates = readCoordinates();
+  const overrides = readCoordinateOverrides();
   const missing: string[] = [];
-  const locations = [...counts.entries()].map(([key, count]) => {
+  const locations: LocationRecord[] = [];
+
+  for (const [key, count] of counts.entries()) {
     const [city, state] = key.split("|");
-    const coordinate = coordinates.get(key);
+    const coordinate = overrides.get(key) ?? await findDatasetCoordinate(city, state);
     if (!coordinate) {
       missing.push(`${city}, ${state}`);
-      return undefined;
+      continue;
     }
-    return {
+    locations.push({
       city,
       county: mostCommonCounty(counties.get(key)) || coordinate.county,
       state,
       count,
       lat: coordinate.latitude,
       lng: coordinate.longitude
-    };
-  }).filter((location): location is LocationRecord => Boolean(location));
+    });
+  }
 
   if (missing.length) {
-    throw new Error(`Missing coordinates in data/city_coordinates.csv:\n${missing.map((item) => `- ${item}`).join("\n")}`);
+    throw new Error(`Missing coordinates. Add these to data/city_overrides.csv:\n${missing.map((item) => `- ${item}`).join("\n")}`);
   }
 
   locations.sort((a, b) => b.count - a.count || a.city.localeCompare(b.city));
@@ -263,11 +306,11 @@ function csvEscape(value: string | number): string {
   return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
-function writeAggregateCsv(locations: LocationRecord[]): void {
-  const coordinates = readCoordinates();
+async function writeAggregateCsv(locations: LocationRecord[]): Promise<void> {
+  const overrides = readCoordinateOverrides();
   const lines = ["city,county,state,signer_count,latitude,longitude,coordinate_source"];
   for (const location of locations) {
-    const coordinate = coordinates.get(keyFor(location.city, location.state));
+    const coordinate = overrides.get(keyFor(location.city, location.state)) ?? await findDatasetCoordinate(location.city, location.state);
     lines.push([
       location.city,
       location.county,
@@ -281,20 +324,20 @@ function writeAggregateCsv(locations: LocationRecord[]): void {
   fs.writeFileSync(OUTPUT_CSV_PATH, `${lines.join("\n")}\n`);
 }
 
-function updateHtml(locations: LocationRecord[]): void {
-  const html = fs.readFileSync(HTML_PATH, "utf8");
+function writeHtml(locations: LocationRecord[]): void {
+  const html = fs.readFileSync(HTML_TEMPLATE_PATH, "utf8");
   const locationsJson = JSON.stringify(locations, null, 2);
-  const locationsPattern = /(\s*)const locations = \[[\s\S]*?\n\];/;
-  if (!locationsPattern.test(html)) {
-    throw new Error("Could not find embedded locations array in Signers Heat Map.html");
+  if (!html.includes("__LOCATIONS_JSON__")) {
+    throw new Error("Could not find __LOCATIONS_JSON__ placeholder in src/template.html");
   }
-  const updated = html.replace(locationsPattern, `$1const locations = ${locationsJson};`);
-  fs.writeFileSync(HTML_PATH, updated);
+  const updated = html.replace("__LOCATIONS_JSON__", locationsJson);
+  fs.writeFileSync(HTML_OUTPUT_PATH, updated);
 }
 
-const { locations, sources } = buildLocations();
-writeAggregateCsv(locations);
-updateHtml(locations);
+const { locations, sources } = await buildLocations();
+fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+await writeAggregateCsv(locations);
+writeHtml(locations);
 
 const total = locations.reduce((sum, location) => sum + location.count, 0);
 console.log(`Built ${locations.length} aggregate locations for ${total} signers.`);

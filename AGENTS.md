@@ -4,3 +4,4 @@
 - Do not commit signer names, addresses, postal codes, emails, phone numbers, signature dates, or raw petition exports.
 - Commit only aggregate signer outputs, such as city/state counts and city-level coordinates.
 - Keep source petition workbooks and exports local unless they have been explicitly anonymized.
+- Use `data/city_overrides.csv` only for aggregate city-level coordinate overrides; do not add signer rows or person-level data there.

@@ -22,9 +22,24 @@ Raw signer files stay in `input/` and are ignored by Git. The build only emits a
 
 Generated outputs:
 
-- `Signers Heat Map.html`
-- `signer_city_locations.csv`
+- `dist/index.html`
+- `dist/signer_city_locations.csv`
 
-Coordinate dictionary:
+Coordinate lookup:
 
-- `data/city_coordinates.csv`
+- `@countrystatecity/countries` for city/state coordinates
+- `data/city_overrides.csv` only for package misses
+
+Tracked source files:
+
+- `src/build.ts`
+- `src/template.html`
+- `data/city_overrides.csv`
+
+## Coordinate Data Attribution
+
+City coordinates are primarily provided by `@countrystatecity/countries`, backed by Countries States Cities Database.
+
+Data by Countries States Cities Database: https://github.com/dr5hn/countries-states-cities-database
+
+License: ODbL v1.0
