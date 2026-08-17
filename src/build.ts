@@ -122,7 +122,7 @@ function readPaper(locations: Map<CityKey, AggregateLocation>): number {
   if (!fs.existsSync(INPUTS.paper)) return 0;
 
   const workbook = XLSX.readFile(INPUTS.paper);
-  const sheet = workbook.Sheets.Paper;
+  const sheet = workbook.Sheets?.Paper ?? workbook.Sheets?.Sheet1;
   if (!sheet) throw new Error("Expected a sheet named 'Paper' in SFIW Petition.xlsx");
 
   let count = 0;

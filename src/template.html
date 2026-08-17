@@ -326,6 +326,7 @@
       zoomControl: false,
       preferCanvas: true
     });
+    const signerMarkers = [];
 
     L.control.zoom({ position: "topright" }).addTo(map);
 
@@ -396,12 +397,55 @@
       });
     });
 
+    function startAmbientSignerMotion() {
+      function pulseRandomSigner() {
+        const marker =
+          signerMarkers[Math.floor(Math.random() * signerMarkers.length)];
+
+        const baseRadius = signerRadiusForZoom();
+        const start = performance.now();
+        const duration = 700;
+
+        function pulse(now) {
+          const progress = Math.min(1, (now - start) / duration);
+
+          // 0 → 1 → 0
+          const wave = Math.sin(progress * Math.PI) ** 2;
+
+          marker.setRadius(baseRadius * (1 + 0.1 * wave));
+
+          marker.setStyle({
+            fillOpacity: 0.1 + 0.15 * wave,
+            opacity: 0.8 + 0.2 * wave
+          });
+
+          if (progress < 1) {
+            requestAnimationFrame(pulse);
+          } else {
+            marker.setRadius(signerRadiusForZoom());
+
+            marker.setStyle({
+              fillOpacity: 0.1,
+              opacity: 0.8
+            });
+          }
+        }
+
+        requestAnimationFrame(pulse);
+
+        // Random interval prevents a detectable rhythm.
+        setTimeout(pulseRandomSigner, 50 + Math.random() * 100);
+      }
+
+      pulseRandomSigner();
+    }
+
     function drawSignerPoints() {
       let signerIndex = 0;
       const animations = [];
 
       const START_DELAY = 500;
-      const END_DELAY = 8000;
+      const END_DELAY = 1000;
       const DURATION = 400;
 
       const START_RADIUS = 24;
@@ -430,6 +474,7 @@
             interactive: false,
             renderer: pointRenderer
           }).addTo(signerLayer);
+          signerMarkers.push(marker);
 
           if (!reduceMotion) {
             // Cubic distribution:
@@ -450,6 +495,10 @@
 
       if (!reduceMotion) {
         animateSignerPoints(animations, DURATION, START_RADIUS, FINAL_RADIUS);
+        setTimeout(
+          startAmbientSignerMotion,
+          END_DELAY + DURATION
+        );
       }
     }
 
