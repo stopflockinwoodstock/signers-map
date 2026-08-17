@@ -7,289 +7,208 @@ import type * as XLSXType from "xlsx";
 const require = createRequire(import.meta.url);
 const XLSX = require("xlsx") as typeof XLSXType;
 
-type CountKey = `${string}|${string}`;
+type CityKey = `${string}|${string}`;
 
-interface CoordinateRow {
+type AggregateLocation = {
   city: string;
-  county: string;
   state: string;
-  latitude: number;
-  longitude: number;
-  coordinateSource: string;
-}
+  count: number;
+  counties: Map<string, number>;
+};
 
-interface LocationRecord {
+type Coordinate = {
+  lat: number;
+  lng: number;
+  county: string;
+  source: string;
+};
+
+type MappedLocation = {
   city: string;
   county: string;
   state: string;
   count: number;
   lat: number;
   lng: number;
-}
+  coordinateSource: string;
+};
 
 const ROOT = process.cwd();
 const INPUT_DIR = path.join(ROOT, "input");
 const OUTPUT_DIR = path.join(ROOT, "dist");
-const HTML_TEMPLATE_PATH = path.join(ROOT, "src", "template.html");
-const HTML_OUTPUT_PATH = path.join(OUTPUT_DIR, "index.html");
-const OUTPUT_CSV_PATH = path.join(OUTPUT_DIR, "signer_city_locations.csv");
+const TEMPLATE_PATH = path.join(ROOT, "src", "template.html");
 const OVERRIDES_PATH = path.join(ROOT, "data", "city_overrides.csv");
 
-const PAPER_WORKBOOK = path.join(INPUT_DIR, "SFIW Petition.xlsx");
-const ONLINE_EXPORT = path.join(INPUT_DIR, "petition_signatures_jobs_491242344_20260725164505.csv.xls");
+const INPUTS = {
+  paper: path.join(INPUT_DIR, "SFIW Petition.xlsx"),
+  online: path.join(INPUT_DIR, "petition_signatures_jobs_491242344_20260725164505.csv.xls")
+};
 
 const CITY_FIXES = new Map<string, string>([
-  ["woodstock", "Woodstock"],
-  ["woodstock il 60098", "Woodstock"],
   ["crystal lake", "Crystal Lake"],
-  ["mchenry", "McHenry"],
-  ["lake in the hills", "Lake in the Hills"],
-  ["wonder lake", "Wonder Lake"],
-  ["spring grove", "Spring Grove"],
-  ["mundelein", "Mundelein"],
-  ["delavan", "Delavan"],
   ["dekalb", "De Kalb"],
-  ["racine", "Racine"],
+  ["lake in the hills", "Lake in the Hills"],
+  ["los angles", "Los Angeles"],
+  ["mchenry", "McHenry"],
   ["s. elgin", "South Elgin"],
-  ["los angles", "Los Angeles"]
+  ["spring grove", "Spring Grove"],
+  ["wonder lake", "Wonder Lake"],
+  ["woodstock il 60098", "Woodstock"]
 ]);
 
-const CITY_ALIASES = new Map<CountKey, CountKey>([
+const PACKAGE_ALIASES = new Map<CityKey, CityKey>([
   ["De Kalb|IL", "DeKalb|IL"],
-  ["Fuquay-Varina|NC", "Fuquay-Varina|NC"],
   ["St. Charles|IL", "Saint Charles|IL"],
   ["Village of Lakewood|IL", "Lakewood|IL"]
 ]);
 
-const STATE_FIXES = new Map<string, string>([
-  ["AA", "CA"]
-]);
+const STATE_FIXES = new Map([["AA", "CA"]]);
+const IGNORED_CITY_VALUES = new Set(["", "city", "daesy ruiz", "unknown"]);
 
-const EXCLUDED_CITY_VALUES = new Set(["daesy ruiz", "unknown"]);
-
-function normalizeCity(raw: unknown): string {
-  const city = String(raw ?? "").trim().replace(/\s+/g, " ");
-  const key = city.toLowerCase();
-  if (!city || EXCLUDED_CITY_VALUES.has(key)) return "";
-  const fixed = CITY_FIXES.get(key);
-  if (fixed) return fixed;
-  if (city === city.toUpperCase() || city === city.toLowerCase()) {
-    return city.replace(/\w\S*/g, (word) => word[0].toUpperCase() + word.slice(1).toLowerCase());
-  }
-  return city;
+function titleCase(value: string): string {
+  return value.replace(/\w\S*/g, (word) => word[0].toUpperCase() + word.slice(1).toLowerCase());
 }
 
-function normalizeState(raw: unknown): string {
-  const state = String(raw ?? "").trim().toUpperCase();
+function cityName(raw: unknown): string {
+  const city = clean(raw);
+  const key = city.toLowerCase();
+  if (IGNORED_CITY_VALUES.has(key)) return "";
+  return CITY_FIXES.get(key) ?? (city === city.toLowerCase() || city === city.toUpperCase() ? titleCase(city) : city);
+}
+
+function stateCode(raw: unknown): string {
+  const state = clean(raw).toUpperCase();
   return STATE_FIXES.get(state) ?? state;
 }
 
-function normalizeCounty(raw: unknown): string {
-  return String(raw ?? "").trim().replace(/\s+/g, " ");
+function clean(raw: unknown): string {
+  return String(raw ?? "").trim().replace(/^"|"$/g, "").trim().replace(/\s+/g, " ");
 }
 
-function keyFor(city: string, state: string): CountKey {
+function cityKey(city: string, state: string): CityKey {
   return `${city}|${state}`;
 }
 
-function parseSeparated(text: string, delimiter: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = "";
-  let quoted = false;
-
-  for (let i = 0; i < text.length; i += 1) {
-    const char = text[i];
-    const next = text[i + 1];
-
-    if (quoted) {
-      if (char === '"' && next === '"') {
-        field += '"';
-        i += 1;
-      } else if (char === '"') {
-        quoted = false;
-      } else {
-        field += char;
-      }
-      continue;
-    }
-
-    if (char === '"') {
-      quoted = true;
-    } else if (char === delimiter) {
-      row.push(field);
-      field = "";
-    } else if (char === "\n") {
-      row.push(field);
-      rows.push(row);
-      row = [];
-      field = "";
-    } else if (char !== "\r") {
-      field += char;
-    }
-  }
-
-  if (field || row.length) {
-    row.push(field);
-    rows.push(row);
-  }
-
-  return rows;
-}
-
-function parseDelimited(text: string, delimiter: string): Record<string, string>[] {
-  const rows = parseSeparated(text, delimiter);
-  const headers = rows.shift()?.map((header) => header.trim()) ?? [];
-  return rows.map((values) => {
-    const record: Record<string, string> = {};
-    headers.forEach((header, index) => {
-      record[header] = values[index] ?? "";
-    });
-    return record;
-  });
-}
-
 function addLocation(
-  counts: Map<CountKey, number>,
-  counties: Map<CountKey, Map<string, number>>,
+  locations: Map<CityKey, AggregateLocation>,
   cityRaw: unknown,
   countyRaw: unknown,
   stateRaw: unknown
 ): boolean {
-  const city = normalizeCity(cityRaw);
-  const state = normalizeState(stateRaw);
-  const county = normalizeCounty(countyRaw);
-  if (!city || !state || city.toLowerCase() === "city" || state.toLowerCase() === "state") return false;
+  const city = cityName(cityRaw);
+  const state = stateCode(stateRaw);
+  const county = clean(countyRaw);
+  if (!city || !/^[A-Z]{2}$/.test(state)) return false;
 
-  const key = keyFor(city, state);
-  counts.set(key, (counts.get(key) ?? 0) + 1);
-  if (county) {
-    const countyCounts = counties.get(key) ?? new Map<string, number>();
-    countyCounts.set(county, (countyCounts.get(county) ?? 0) + 1);
-    counties.set(key, countyCounts);
-  }
+  const key = cityKey(city, state);
+  const location = locations.get(key) ?? { city, state, count: 0, counties: new Map<string, number>() };
+  location.count += 1;
+  if (county) location.counties.set(county, (location.counties.get(county) ?? 0) + 1);
+  locations.set(key, location);
   return true;
 }
 
-function readPaperWorkbook(counts: Map<CountKey, number>, counties: Map<CountKey, Map<string, number>>): number {
-  if (!fs.existsSync(PAPER_WORKBOOK)) return 0;
+function readPaper(locations: Map<CityKey, AggregateLocation>): number {
+  if (!fs.existsSync(INPUTS.paper)) return 0;
 
-  const workbook = XLSX.readFile(PAPER_WORKBOOK);
+  const workbook = XLSX.readFile(INPUTS.paper);
   const sheet = workbook.Sheets.Paper;
-  if (!sheet) throw new Error("Expected sheet named 'Paper' in SFIW Petition.xlsx");
+  if (!sheet) throw new Error("Expected a sheet named 'Paper' in SFIW Petition.xlsx");
 
+  let count = 0;
   const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, blankrows: false });
-  let added = 0;
   for (const row of rows) {
-    if (row.length < 4) continue;
-    if (row[0] === "Name" && row[1] === "City" && row[2] === "County" && row[3] === "State") continue;
-    if (addLocation(counts, counties, row[1], row[2], row[3])) added += 1;
+    if (row[0] === "Name" && row[1] === "City") continue;
+    if (addLocation(locations, row[1], row[2], row[3])) count += 1;
   }
-  return added;
+  return count;
 }
 
-function readOnlineExport(counts: Map<CountKey, number>, counties: Map<CountKey, Map<string, number>>): number {
-  if (!fs.existsSync(ONLINE_EXPORT)) return 0;
+function readOnline(locations: Map<CityKey, AggregateLocation>): number {
+  if (!fs.existsSync(INPUTS.online)) return 0;
 
-  const text = fs.readFileSync(ONLINE_EXPORT, "utf16le");
-  const records = parseDelimited(text, "\t");
-  let added = 0;
-  for (const record of records) {
-    if (addLocation(counts, counties, record.City, "", record.State)) added += 1;
+  const rows = fs.readFileSync(INPUTS.online, "utf16le").split(/\r?\n/).filter(Boolean);
+  const headers = rows.shift()?.split("\t") ?? [];
+  const cityIndex = headers.indexOf("City");
+  const stateIndex = headers.indexOf("State");
+  if (cityIndex < 0 || stateIndex < 0) throw new Error("Online export must include City and State columns");
+
+  let count = 0;
+  for (const row of rows) {
+    const cells = row.split("\t");
+    if (addLocation(locations, cells[cityIndex], "", cells[stateIndex])) count += 1;
   }
-  return added;
+  return count;
 }
 
-function readCoordinateOverrides(): Map<CountKey, CoordinateRow> {
+function parseOverrideCsv(): Map<CityKey, Coordinate> {
   if (!fs.existsSync(OVERRIDES_PATH)) return new Map();
 
-  const text = fs.readFileSync(OVERRIDES_PATH, "utf8");
-  const records = parseDelimited(text, ",");
-  const coordinates = new Map<CountKey, CoordinateRow>();
-
-  for (const record of records) {
-    const city = normalizeCity(record.city);
-    const state = normalizeState(record.state);
-    const latitude = Number(record.latitude);
-    const longitude = Number(record.longitude);
-    if (!city || !state || !Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
-    coordinates.set(keyFor(city, state), {
-      city,
-      county: normalizeCounty(record.county),
-      state,
-      latitude,
-      longitude,
-      coordinateSource: record.coordinate_source ?? ""
+  const rows = fs.readFileSync(OVERRIDES_PATH, "utf8").trim().split(/\r?\n/).slice(1);
+  const overrides = new Map<CityKey, Coordinate>();
+  for (const row of rows) {
+    const [cityRaw, countyRaw, stateRaw, latRaw, lngRaw, sourceRaw] = row.split(",");
+    const city = cityName(cityRaw);
+    const state = stateCode(stateRaw);
+    const lat = Number(latRaw);
+    const lng = Number(lngRaw);
+    if (!city || !state || !Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+    overrides.set(cityKey(city, state), {
+      lat,
+      lng,
+      county: clean(countyRaw),
+      source: clean(sourceRaw) || "manual_override"
     });
   }
-
-  return coordinates;
+  return overrides;
 }
 
-function cityDatasetKey(city: string, state: string): CountKey {
-  return CITY_ALIASES.get(keyFor(city, state)) ?? keyFor(city, state);
-}
+const packageCityCache = new Map<string, Promise<ICity[]>>();
 
-const stateCityCache = new Map<string, Promise<ICity[]>>();
-
-async function getStateCities(state: string): Promise<ICity[]> {
-  if (!stateCityCache.has(state)) {
-    stateCityCache.set(state, getCitiesOfState("US", state));
+function packageCities(state: string): Promise<ICity[]> {
+  if (!packageCityCache.has(state)) {
+    packageCityCache.set(state, getCitiesOfState("US", state));
   }
-  return stateCityCache.get(state)!;
+  return packageCityCache.get(state)!;
 }
 
-async function findDatasetCoordinate(city: string, state: string): Promise<CoordinateRow | undefined> {
-  const [lookupCity, lookupState] = cityDatasetKey(city, state).split("|");
-  const cities = await getStateCities(lookupState);
-  const match = cities.find((candidate) => candidate.name.toLowerCase() === lookupCity.toLowerCase());
+async function packageCoordinate(city: string, state: string): Promise<Coordinate | undefined> {
+  const [lookupCity, lookupState] = (PACKAGE_ALIASES.get(cityKey(city, state)) ?? cityKey(city, state)).split("|");
+  const match = (await packageCities(lookupState)).find((candidate) => candidate.name.toLowerCase() === lookupCity.toLowerCase());
   if (!match) return undefined;
 
   return {
-    city,
+    lat: Number(match.latitude),
+    lng: Number(match.longitude),
     county: "",
-    state,
-    latitude: Number(match.latitude),
-    longitude: Number(match.longitude),
-    coordinateSource: "@countrystatecity/countries"
+    source: "@countrystatecity/countries"
   };
 }
 
-function mostCommonCounty(countyCounts: Map<string, number> | undefined): string {
-  if (!countyCounts) return "";
-  return [...countyCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? "";
+function mostCommonCounty(location: AggregateLocation): string {
+  return [...location.counties.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? "";
 }
 
-async function buildLocations(): Promise<{ locations: LocationRecord[]; sources: Record<string, number> }> {
-  const counts = new Map<CountKey, number>();
-  const counties = new Map<CountKey, Map<string, number>>();
-  const sources = {
-    paper: readPaperWorkbook(counts, counties),
-    online: readOnlineExport(counts, counties)
-  };
-
-  if (!counts.size) {
-    throw new Error(`No signer input rows found. Put source sheets in ${path.relative(ROOT, INPUT_DIR)}.`);
-  }
-
-  const overrides = readCoordinateOverrides();
+async function mapLocations(locations: Map<CityKey, AggregateLocation>): Promise<MappedLocation[]> {
+  const overrides = parseOverrideCsv();
+  const mapped: MappedLocation[] = [];
   const missing: string[] = [];
-  const locations: LocationRecord[] = [];
 
-  for (const [key, count] of counts.entries()) {
-    const [city, state] = key.split("|");
-    const coordinate = overrides.get(key) ?? await findDatasetCoordinate(city, state);
+  for (const location of locations.values()) {
+    const coordinate = overrides.get(cityKey(location.city, location.state)) ?? await packageCoordinate(location.city, location.state);
     if (!coordinate) {
-      missing.push(`${city}, ${state}`);
+      missing.push(`${location.city}, ${location.state}`);
       continue;
     }
-    locations.push({
-      city,
-      county: mostCommonCounty(counties.get(key)) || coordinate.county,
-      state,
-      count,
-      lat: coordinate.latitude,
-      lng: coordinate.longitude
+
+    mapped.push({
+      city: location.city,
+      county: mostCommonCounty(location) || coordinate.county,
+      state: location.state,
+      count: location.count,
+      lat: coordinate.lat,
+      lng: coordinate.lng,
+      coordinateSource: coordinate.source
     });
   }
 
@@ -297,48 +216,52 @@ async function buildLocations(): Promise<{ locations: LocationRecord[]; sources:
     throw new Error(`Missing coordinates. Add these to data/city_overrides.csv:\n${missing.map((item) => `- ${item}`).join("\n")}`);
   }
 
-  locations.sort((a, b) => b.count - a.count || a.city.localeCompare(b.city));
-  return { locations, sources };
+  return mapped.sort((a, b) => b.count - a.count || a.city.localeCompare(b.city));
 }
 
-function csvEscape(value: string | number): string {
+function csvCell(value: string | number): string {
   const text = String(value);
   return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
-async function writeAggregateCsv(locations: LocationRecord[]): Promise<void> {
-  const overrides = readCoordinateOverrides();
-  const lines = ["city,county,state,signer_count,latitude,longitude,coordinate_source"];
-  for (const location of locations) {
-    const coordinate = overrides.get(keyFor(location.city, location.state)) ?? await findDatasetCoordinate(location.city, location.state);
-    lines.push([
+function writeCsv(locations: MappedLocation[]): void {
+  const rows = [
+    ["city", "county", "state", "signer_count", "latitude", "longitude", "coordinate_source"],
+    ...locations.map((location) => [
       location.city,
       location.county,
       location.state,
       location.count,
       location.lat,
       location.lng,
-      coordinate?.coordinateSource ?? ""
-    ].map(csvEscape).join(","));
-  }
-  fs.writeFileSync(OUTPUT_CSV_PATH, `${lines.join("\n")}\n`);
+      location.coordinateSource
+    ])
+  ];
+  fs.writeFileSync(path.join(OUTPUT_DIR, "signer_city_locations.csv"), `${rows.map((row) => row.map(csvCell).join(",")).join("\n")}\n`);
 }
 
-function writeHtml(locations: LocationRecord[]): void {
-  const html = fs.readFileSync(HTML_TEMPLATE_PATH, "utf8");
-  const locationsJson = JSON.stringify(locations, null, 2);
-  if (!html.includes("__LOCATIONS_JSON__")) {
-    throw new Error("Could not find __LOCATIONS_JSON__ placeholder in src/template.html");
-  }
-  const updated = html.replace("__LOCATIONS_JSON__", locationsJson);
-  fs.writeFileSync(HTML_OUTPUT_PATH, updated);
+function writeHtml(locations: MappedLocation[]): void {
+  const template = fs.readFileSync(TEMPLATE_PATH, "utf8");
+  if (!template.includes("__LOCATIONS_JSON__")) throw new Error("Missing __LOCATIONS_JSON__ placeholder in src/template.html");
+  const html = template.replace("__LOCATIONS_JSON__", JSON.stringify(locations, null, 2));
+  fs.writeFileSync(path.join(OUTPUT_DIR, "index.html"), html);
 }
 
-const { locations, sources } = await buildLocations();
+const aggregateLocations = new Map<CityKey, AggregateLocation>();
+const sources = {
+  paper: readPaper(aggregateLocations),
+  online: readOnline(aggregateLocations)
+};
+
+if (!aggregateLocations.size) {
+  throw new Error(`No signer input rows found. Put source sheets in ${path.relative(ROOT, INPUT_DIR)}.`);
+}
+
+const mappedLocations = await mapLocations(aggregateLocations);
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-await writeAggregateCsv(locations);
-writeHtml(locations);
+writeCsv(mappedLocations);
+writeHtml(mappedLocations);
 
-const total = locations.reduce((sum, location) => sum + location.count, 0);
-console.log(`Built ${locations.length} aggregate locations for ${total} signers.`);
+const total = mappedLocations.reduce((sum, location) => sum + location.count, 0);
+console.log(`Built ${mappedLocations.length} aggregate locations for ${total} signers.`);
 console.log(`Source rows: paper=${sources.paper}, online=${sources.online}`);
