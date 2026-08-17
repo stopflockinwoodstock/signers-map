@@ -356,9 +356,11 @@
           const latLng = jitteredPoint(location, signerIndex);
           L.circleMarker(latLng, {
             radius: 10,
-            stroke: false,
+            color: "#ff174d",
+            weight: 1.5,
+            opacity: 0.8,
             fillColor: "#ff174d",
-            fillOpacity: 0.74,
+            fillOpacity: 0.1,
             interactive: false,
             renderer: pointRenderer
           }).addTo(signerLayer);

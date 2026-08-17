@@ -24,11 +24,13 @@ Generated outputs:
 
 - `dist/index.html`
 - `dist/signer_city_locations.csv`
+- `dist/missing_coordinates.csv`
 
 Coordinate lookup:
 
 - `@countrystatecity/countries` for city/state coordinates
 - `data/city_overrides.csv` only for package misses
+- Rows that still cannot be resolved are skipped from the map and written to `dist/missing_coordinates.csv`
 
 Tracked source files:
 

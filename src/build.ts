@@ -33,6 +33,12 @@ type MappedLocation = {
   coordinateSource: string;
 };
 
+type MissingLocation = {
+  city: string;
+  state: string;
+  count: number;
+};
+
 const ROOT = process.cwd();
 const INPUT_DIR = path.join(ROOT, "input");
 const OUTPUT_DIR = path.join(ROOT, "dist");
@@ -41,12 +47,14 @@ const OVERRIDES_PATH = path.join(ROOT, "data", "city_overrides.csv");
 
 const INPUTS = {
   paper: path.join(INPUT_DIR, "SFIW Petition.xlsx"),
-  online: path.join(INPUT_DIR, "petition_signatures_jobs_491242344_20260725164505.csv.xls")
+  online: path.join(INPUT_DIR, "petition_signatures_jobs_491242344_20260816223514.csv")
 };
 
 const CITY_FIXES = new Map<string, string>([
+  ["brookfeld", "Brookfield"],
   ["crystal lake", "Crystal Lake"],
   ["dekalb", "De Kalb"],
+  ["hp", "Highland Park"],
   ["lake in the hills", "Lake in the Hills"],
   ["los angles", "Los Angeles"],
   ["mchenry", "McHenry"],
@@ -57,13 +65,15 @@ const CITY_FIXES = new Map<string, string>([
 ]);
 
 const PACKAGE_ALIASES = new Map<CityKey, CityKey>([
+  ["Campton Hills|IL", "Village of Campton Hills|IL"],
   ["De Kalb|IL", "DeKalb|IL"],
+  ["Saint Louis|MO", "St. Louis|MO"],
   ["St. Charles|IL", "Saint Charles|IL"],
   ["Village of Lakewood|IL", "Lakewood|IL"]
 ]);
 
 const STATE_FIXES = new Map([["AA", "CA"]]);
-const IGNORED_CITY_VALUES = new Set(["", "city", "daesy ruiz", "unknown"]);
+const IGNORED_CITY_VALUES = new Set(["", "city", "daesy ruiz", "illinois", "unknown"]);
 
 function titleCase(value: string): string {
   return value.replace(/\w\S*/g, (word) => word[0].toUpperCase() + word.slice(1).toLowerCase());
@@ -189,15 +199,18 @@ function mostCommonCounty(location: AggregateLocation): string {
   return [...location.counties.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? "";
 }
 
-async function mapLocations(locations: Map<CityKey, AggregateLocation>): Promise<MappedLocation[]> {
+async function mapLocations(locations: Map<CityKey, AggregateLocation>): Promise<{
+  mapped: MappedLocation[];
+  missing: MissingLocation[];
+}> {
   const overrides = parseOverrideCsv();
   const mapped: MappedLocation[] = [];
-  const missing: string[] = [];
+  const missing: MissingLocation[] = [];
 
   for (const location of locations.values()) {
     const coordinate = overrides.get(cityKey(location.city, location.state)) ?? await packageCoordinate(location.city, location.state);
     if (!coordinate) {
-      missing.push(`${location.city}, ${location.state}`);
+      missing.push({ city: location.city, state: location.state, count: location.count });
       continue;
     }
 
@@ -212,11 +225,10 @@ async function mapLocations(locations: Map<CityKey, AggregateLocation>): Promise
     });
   }
 
-  if (missing.length) {
-    throw new Error(`Missing coordinates. Add these to data/city_overrides.csv:\n${missing.map((item) => `- ${item}`).join("\n")}`);
-  }
-
-  return mapped.sort((a, b) => b.count - a.count || a.city.localeCompare(b.city));
+  return {
+    mapped: mapped.sort((a, b) => b.count - a.count || a.city.localeCompare(b.city)),
+    missing: missing.sort((a, b) => b.count - a.count || a.city.localeCompare(b.city))
+  };
 }
 
 function csvCell(value: string | number): string {
@@ -240,6 +252,14 @@ function writeCsv(locations: MappedLocation[]): void {
   fs.writeFileSync(path.join(OUTPUT_DIR, "signer_city_locations.csv"), `${rows.map((row) => row.map(csvCell).join(",")).join("\n")}\n`);
 }
 
+function writeMissingCsv(locations: MissingLocation[]): void {
+  const rows = [
+    ["city", "state", "signer_count"],
+    ...locations.map((location) => [location.city, location.state, location.count])
+  ];
+  fs.writeFileSync(path.join(OUTPUT_DIR, "missing_coordinates.csv"), `${rows.map((row) => row.map(csvCell).join(",")).join("\n")}\n`);
+}
+
 function writeHtml(locations: MappedLocation[]): void {
   const template = fs.readFileSync(TEMPLATE_PATH, "utf8");
   if (!template.includes("__LOCATIONS_JSON__")) throw new Error("Missing __LOCATIONS_JSON__ placeholder in src/template.html");
@@ -257,11 +277,16 @@ if (!aggregateLocations.size) {
   throw new Error(`No signer input rows found. Put source sheets in ${path.relative(ROOT, INPUT_DIR)}.`);
 }
 
-const mappedLocations = await mapLocations(aggregateLocations);
+const { mapped: mappedLocations, missing: missingLocations } = await mapLocations(aggregateLocations);
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 writeCsv(mappedLocations);
+writeMissingCsv(missingLocations);
 writeHtml(mappedLocations);
 
 const total = mappedLocations.reduce((sum, location) => sum + location.count, 0);
 console.log(`Built ${mappedLocations.length} aggregate locations for ${total} signers.`);
 console.log(`Source rows: paper=${sources.paper}, online=${sources.online}`);
+if (missingLocations.length) {
+  const missingTotal = missingLocations.reduce((sum, location) => sum + location.count, 0);
+  console.log(`Skipped ${missingLocations.length} locations / ${missingTotal} signers without coordinates. See dist/missing_coordinates.csv.`);
+}
