@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Signer Volume Heat Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172026;
+      --muted: #5b6670;
+      --line: #d9e0e6;
+      --panel: #ffffff;
+      --surface: #f6f8f9;
+      --accent: #c6422d;
+      --accent-strong: #8d2318;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--surface);
+    }
+
+    .app {
+      height: 100vh;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      overflow: hidden;
+    }
+
+    #map {
+      height: 100vh;
+      width: 100%;
+      background: #dbe3e8;
+    }
+
+    /* Critical Leaflet layout rules. Keeping these local prevents broken tile
+       layout if the CDN stylesheet is delayed or blocked. */
+    .leaflet-container {
+      position: relative;
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      outline-style: none;
+    }
+
+    .leaflet-pane,
+    .leaflet-tile,
+    .leaflet-marker-icon,
+    .leaflet-marker-shadow,
+    .leaflet-tile-container,
+    .leaflet-pane > svg,
+    .leaflet-pane > canvas,
+    .leaflet-zoom-box,
+    .leaflet-image-layer,
+    .leaflet-layer {
+      position: absolute;
+      left: 0;
+      top: 0;
+    }
+
+    .leaflet-tile,
+    .leaflet-marker-icon,
+    .leaflet-marker-shadow {
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+
+    .leaflet-tile {
+      width: 256px;
+      height: 256px;
+      max-width: none;
+      max-height: none;
+      border: 0;
+      padding: 0;
+    }
+
+    .leaflet-tile-pane {
+      z-index: 200;
+    }
+
+    .leaflet-overlay-pane {
+      z-index: 400;
+    }
+
+    .leaflet-marker-pane {
+      z-index: 600;
+    }
+
+    .leaflet-tooltip-pane {
+      z-index: 650;
+    }
+
+    .leaflet-control {
+      position: relative;
+      z-index: 800;
+      pointer-events: auto;
+    }
+
+    .leaflet-top,
+    .leaflet-bottom {
+      position: absolute;
+      z-index: 1000;
+      pointer-events: none;
+    }
+
+    .leaflet-top {
+      top: 0;
+    }
+
+    .leaflet-right {
+      right: 0;
+    }
+
+    .leaflet-control-container .leaflet-control {
+      margin: 10px;
+    }
+
+    .panel {
+      height: 100vh;
+      overflow: hidden;
+      background: var(--panel);
+      border-left: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      padding: 22px 24px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: 24px;
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+
+    .subhead {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .stat {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfd;
+    }
+
+    .stat-label {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+
+    .stat-value {
+      margin-top: 5px;
+      font-size: 28px;
+      line-height: 1;
+      font-weight: 750;
+    }
+
+    .list {
+      overflow: auto;
+      padding: 14px 0 20px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 54px;
+      gap: 14px;
+      align-items: center;
+      padding: 9px 24px;
+      border-left: 4px solid transparent;
+    }
+
+    .row:hover {
+      background: #f4f7f9;
+      border-left-color: var(--accent);
+    }
+
+    .place {
+      min-width: 0;
+    }
+
+    .city {
+      font-size: 14px;
+      font-weight: 650;
+      line-height: 1.25;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .county {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+
+    .bar-wrap {
+      margin-top: 7px;
+      height: 5px;
+      background: #e8edf1;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+      border-radius: inherit;
+    }
+
+    .count {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-size: 15px;
+      font-weight: 750;
+    }
+
+    .legend {
+      position: absolute;
+      z-index: 600;
+      left: 18px;
+      bottom: 18px;
+      width: 250px;
+      padding: 12px 14px;
+      background: rgba(255, 255, 255, 0.94);
+      border: 1px solid rgba(23, 32, 38, 0.14);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(23, 32, 38, 0.14);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .legend-title {
+      margin-bottom: 8px;
+      font-weight: 750;
+      font-size: 13px;
+    }
+
+    .ramp {
+      height: 10px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #2a5bd7, #24a357, #ffd83d, #ff8a2b, #b21616);
+      margin-bottom: 7px;
+    }
+
+    .legend-scale {
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+    }
+
+    @media (max-width: 860px) {
+      .app {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(58vh, 1fr) auto;
+      }
+
+      #map {
+        height: 58vh;
+      }
+
+      .panel {
+        height: 42vh;
+        border-left: 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .list {
+        max-height: 38vh;
+      }
+
+      .legend {
+        width: 220px;
+        left: 12px;
+        bottom: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section id="map" aria-label="Heat map of signer volume by city"></section>
+    <aside class="panel" aria-label="Signer counts by location">
+      <header class="header">
+        <h1>Signer Volume Heat Map</h1>
+        <p class="subhead">Each signer is represented as a heat-map point placed at a deterministic 1-pixel randomized offset from the city center.</p>
+      </header>
+      <section class="stats" aria-label="Summary statistics">
+        <div class="stat">
+          <div class="stat-label">Signers mapped</div>
+          <div class="stat-value" id="totalSigners">0</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Locations</div>
+          <div class="stat-value" id="totalLocations">0</div>
+        </div>
+      </section>
+      <section class="list" id="locationList" aria-label="Locations ranked by signer count"></section>
+    </aside>
+  </main>
+
+  <div class="legend" aria-hidden="true">
+    <div class="legend-title">Heat intensity</div>
+    <div class="ramp"></div>
+    <div class="legend-scale">
+      <span>Lower volume</span>
+      <span>Higher volume</span>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+  <script>
+    const locations = [
+      { city: "Woodstock", county: "McHenry", state: "IL", count: 343, lat: 42.3147, lng: -88.4487 },
+      { city: "Crystal Lake", county: "McHenry", state: "IL", count: 77, lat: 42.2411, lng: -88.3162 },
+      { city: "McHenry", county: "McHenry", state: "IL", count: 68, lat: 42.3334, lng: -88.2668 },
+      { city: "Lake in the Hills", county: "McHenry", state: "IL", count: 30, lat: 42.1817, lng: -88.3304 },
+      { city: "Wonder Lake", county: "McHenry", state: "IL", count: 24, lat: 42.3853, lng: -88.3476 },
+      { city: "Cary", county: "McHenry", state: "IL", count: 24, lat: 42.2119, lng: -88.2381 },
+      { city: "Harvard", county: "McHenry", state: "IL", count: 23, lat: 42.4222, lng: -88.6137 },
+      { city: "Huntley", county: "McHenry", state: "IL", count: 22, lat: 42.1681, lng: -88.4281 },
+      { city: "Algonquin", county: "McHenry", state: "IL", count: 12, lat: 42.1656, lng: -88.2943 },
+      { city: "Marengo", county: "McHenry", state: "IL", count: 9, lat: 42.2486, lng: -88.6084 },
+      { city: "Bull Valley", county: "McHenry", state: "IL", count: 6, lat: 42.3206, lng: -88.3554 },
+      { city: "Richmond", county: "McHenry", state: "IL", count: 5, lat: 42.4758, lng: -88.3054 },
+      { city: "Lakemoor", county: "McHenry", state: "IL", count: 4, lat: 42.3272, lng: -88.1987 },
+      { city: "Spring Grove", county: "McHenry", state: "IL", count: 3, lat: 42.4436, lng: -88.2365 },
+      { city: "McCullom Lake", county: "McHenry", state: "IL", count: 2, lat: 42.3681, lng: -88.2931 },
+      { city: "Johnsburg", county: "McHenry", state: "IL", count: 2, lat: 42.3800, lng: -88.2420 },
+      { city: "Village of Lakewood", county: "McHenry", state: "IL", count: 1, lat: 42.2292, lng: -88.3551 },
+      { city: "Solon Mills", county: "McHenry", state: "IL", count: 1, lat: 42.4167, lng: -88.2959 },
+      { city: "Hebron", county: "McHenry", state: "IL", count: 1, lat: 42.4717, lng: -88.4323 }
+    ];
+
+    const totalSigners = locations.reduce((sum, location) => sum + location.count, 0);
+    const maxCount = Math.max(...locations.map((location) => location.count));
+    document.getElementById("totalSigners").textContent = totalSigners.toLocaleString();
+    document.getElementById("totalLocations").textContent = locations.length.toLocaleString();
+
+    const map = L.map("map", {
+      zoomControl: false,
+      preferCanvas: true
+    });
+
+    L.control.zoom({ position: "topright" }).addTo(map);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+
+    const bounds = L.latLngBounds(locations.map((location) => [location.lat, location.lng]));
+    map.fitBounds(bounds.pad(0.22));
+    requestAnimationFrame(() => map.invalidateSize());
+
+    function seededUnit(seed) {
+      const x = Math.sin(seed * 9301 + 49297) * 233280;
+      return x - Math.floor(x);
+    }
+
+    function jitteredPoint(location, index) {
+      const center = map.latLngToContainerPoint([location.lat, location.lng]);
+      const angle = seededUnit(index + location.lat * 1000) * Math.PI * 2;
+      const radius = Math.sqrt(seededUnit(index + location.lng * 1000)) * 1;
+      const point = L.point(center.x + Math.cos(angle) * radius, center.y + Math.sin(angle) * radius);
+      return map.containerPointToLatLng(point);
+    }
+
+    function buildHeatPoints() {
+      const points = [];
+      let signerIndex = 0;
+      for (const location of locations) {
+        for (let i = 0; i < location.count; i += 1) {
+          signerIndex += 1;
+          const latLng = jitteredPoint(location, signerIndex);
+          points.push([latLng.lat, latLng.lng, 0.82]);
+        }
+      }
+      return points;
+    }
+
+    const heatLayer = L.heatLayer(buildHeatPoints(), {
+      radius: 31,
+      blur: 24,
+      maxZoom: 13,
+      minOpacity: 0.28,
+      gradient: {
+        0.18: "#2a5bd7",
+        0.38: "#24a357",
+        0.60: "#ffd83d",
+        0.78: "#ff8a2b",
+        1.0: "#b21616"
+      }
+    }).addTo(map);
+
+    const markerLayer = L.layerGroup().addTo(map);
+    for (const location of locations) {
+      const size = 8 + Math.sqrt(location.count) * 2.15;
+      L.circleMarker([location.lat, location.lng], {
+        radius: size,
+        color: "#ffffff",
+        weight: 2,
+        fillColor: "#8d2318",
+        fillOpacity: 0.72
+      })
+        .bindTooltip(`${location.city}: ${location.count.toLocaleString()} signers`, {
+          direction: "top",
+          sticky: true
+        })
+        .addTo(markerLayer);
+    }
+
+    map.on("zoomend moveend", () => {
+      heatLayer.setLatLngs(buildHeatPoints());
+    });
+
+    const list = document.getElementById("locationList");
+    for (const location of locations) {
+      const row = document.createElement("article");
+      row.className = "row";
+      row.innerHTML = `
+        <div class="place">
+          <div class="city">${location.city}</div>
+          <div class="county">${location.count.toLocaleString()} of ${totalSigners.toLocaleString()} signers</div>
+          <div class="bar-wrap" aria-hidden="true">
+            <div class="bar" style="width: ${(location.count / maxCount) * 100}%"></div>
+          </div>
+        </div>
+        <div class="count">${location.count.toLocaleString()}</div>
+      `;
+      list.appendChild(row);
+    }
+  </script>
+</body>
+</html>
