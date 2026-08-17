@@ -1,6 +1,9 @@
 .DS_Store
 node_modules/
 dist/
+input/*
+!input/.gitkeep
+!input/README.md
 *.xlsx
 *.xls
 *.csv.xls
