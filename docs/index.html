@@ -263,22 +263,6 @@
       font-weight: 750;
     }
 
-    .city-label {
-  background: rgba(255, 255, 255, 0.05);
-  border: 0;
-  box-shadow: none;
-  color: #172026;
-  font-size: 13px;
-  font-weight: 700;
-  padding: 2px 5px;
-  border-radius: 4px;
-  pointer-events: none;
-}
-
-.city-label::before {
-  display: none;
-}
-
     @media (max-width: 860px) {
       .app {
         grid-template-columns: 1fr;
@@ -2567,12 +2551,10 @@
           fillOpacity: 0,
           keyboard: false
         })
-          .bindTooltip(`${location.city}: ${location.count.toLocaleString()}`, {
-            permanent: true,
-  direction: "center",
-  className: "city-label",
-  opacity: 1
-})
+          .bindTooltip(`${location.city}, ${location.state}: ${location.count.toLocaleString()} signers`, {
+            direction: "top",
+            sticky: true
+          })
           .addTo(map);
       }
     }
