@@ -293,6 +293,8 @@
       <header class="header">
         <h1>Stop Flock in Woodstock Signers</h1>
         <p class="subhead">Last updated August 17, 2026 1:07am CT</p>
+        <p>You can make a difference, <a href="https://www.change.org/p/we-want-flock-safety-out-of-woodstock-il">Sign the Petition!</a></p>
+        <p>Note: Signers exact locations have been randomized to protect privacy.</p>
       </header>
       <section class="stats" aria-label="Summary statistics">
         <div class="stat">
@@ -358,27 +360,175 @@
       return L.latLng(lat, lng);
     }
 
-    const pointRenderer = L.canvas({ padding: 0.5 });
+    const TextureCanvas = L.Canvas.extend({
+      _fillStroke(ctx, layer) {
+        ctx.save();
+
+        ctx.globalCompositeOperation = "lighter";
+
+        L.Canvas.prototype._fillStroke.call(this, ctx, layer);
+
+        ctx.restore();
+      }
+    });
+
+    const pointRenderer = new TextureCanvas({ padding: 0.5 });
     const signerLayer = L.layerGroup().addTo(map);
+
+    function signerRadiusForZoom() {
+      const zoom = map.getZoom();
+
+      if (zoom >= 19) return 250;
+      if (zoom >= 18) return 150;
+      if (zoom >= 17) return 90;
+      if (zoom >= 16) return 55;
+      if (zoom >= 15) return 32;
+      if (zoom >= 14) return 18;
+
+      return 10;
+    }
+
+    map.on("zoomend", () => {
+      const radius = signerRadiusForZoom();
+
+      signerLayer.eachLayer((marker) => {
+        marker.setRadius(radius);
+      });
+    });
 
     function drawSignerPoints() {
       let signerIndex = 0;
+      const animations = [];
+
+      const START_DELAY = 500;
+      const END_DELAY = 8000;
+      const DURATION = 400;
+
+      const START_RADIUS = 24;
+      const FINAL_RADIUS = 12;
+
+      // Respect reduced-motion accessibility settings.
+      const reduceMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)"
+      ).matches;
+
+      const animationStart = performance.now();
+
       for (const location of locations) {
         for (let i = 0; i < location.count; i += 1) {
           signerIndex += 1;
+
           const latLng = jitteredPoint(location, signerIndex);
-          L.circleMarker(latLng, {
-            radius: 10,
+
+          const marker = L.circleMarker(latLng, {
+            radius: reduceMotion ? FINAL_RADIUS : START_RADIUS,
             color: "#ff174d",
             weight: 1.5,
-            opacity: 0.8,
-            fillColor: "#ff174d",
-            fillOpacity: 0.1,
+            opacity: reduceMotion ? 0.8 : 0,
+            fillColor: "hsl(346 100% 95%)",
+            fillOpacity: reduceMotion ? 0.1 : 0,
             interactive: false,
             renderer: pointRenderer
           }).addTo(signerLayer);
+
+          if (!reduceMotion) {
+            // Cubic distribution:
+            // relatively few early dots, rapidly increasing toward 8 sec.
+            const randomPosition = Math.pow(Math.random(), 1 / 3);
+
+            const delay =
+              START_DELAY +
+              randomPosition * (END_DELAY - START_DELAY);
+
+            animations.push({
+              marker,
+              start: animationStart + delay
+            });
+          }
         }
       }
+
+      if (!reduceMotion) {
+        animateSignerPoints(animations, DURATION, START_RADIUS, FINAL_RADIUS);
+      }
+    }
+
+    function animateSignerPoints(
+      animations,
+      duration,
+      startRadius,
+      finalRadius
+    ) {
+      // Sorting means we don't repeatedly inspect points whose
+      // animation hasn't started yet.
+      animations.sort((a, b) => a.start - b.start);
+
+      let nextAnimation = 0;
+      const active = [];
+
+      function frame(now) {
+        // Move newly-started dots into the active animation list.
+        while (
+          nextAnimation < animations.length &&
+          animations[nextAnimation].start <= now
+        ) {
+          active.push(animations[nextAnimation]);
+          nextAnimation += 1;
+        }
+
+        for (let i = active.length - 1; i >= 0; i -= 1) {
+          const animation = active[i];
+
+          const progress = Math.min(
+            1,
+            (now - animation.start) / duration
+          );
+
+          // Ease-out cubic:
+          // rapid initial movement, gentle landing at final size.
+          const eased =
+            1 - Math.pow(1 - progress, 3);
+
+          const radius =
+            startRadius -
+            (startRadius - finalRadius) * eased;
+
+          // No fade from invisible — it appears immediately.
+          const fadeProgress = 1;
+
+          animation.marker.setRadius(radius);
+
+          // Very pale pink -> final red
+          const fillColor = `hsl(346 100% ${95 - (40 * eased)}%)`;
+
+          animation.marker.setStyle({
+            color: "#ff174d",
+            fillColor: "hsl(346 100% 60%)",
+            opacity: 1,
+            fillOpacity: 0.9 - (0.8 * eased)
+          });
+
+          if (progress >= 1) {
+            animation.marker.setRadius(finalRadius);
+
+            animation.marker.setStyle({
+              opacity: 0.8,
+              fillOpacity: 0.1
+            });
+
+            active.splice(i, 1);
+          }
+        }
+
+        if (
+          nextAnimation < animations.length ||
+          active.length > 0
+        ) {
+          requestAnimationFrame(frame);
+        }
+      }
+
+      requestAnimationFrame(frame);
     }
 
     function drawTooltips() {
