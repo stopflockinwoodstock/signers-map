@@ -292,13 +292,13 @@
     <aside class="panel" aria-label="Signer counts by location">
       <header class="header">
         <h1>Stop Flock in Woodstock Signers</h1>
-        <p class="subhead">Last updated August 17, 2026 1:07am CT</p>
+        <p class="subhead">Last updated __UPDATED_AT__</p>
         <p>You can make a difference, <a href="https://www.change.org/p/we-want-flock-safety-out-of-woodstock-il">Sign the Petition!</a></p>
         <p>Note: Signers exact locations have been randomized to protect privacy.</p>
       </header>
       <section class="stats" aria-label="Summary statistics">
         <div class="stat">
-          <div class="stat-label">Signers mapped</div>
+          <div class="stat-label">Signatures</div>
           <div class="stat-value" id="totalSigners">0</div>
         </div>
         <div class="stat">
@@ -317,9 +317,9 @@
   <script>
     const locations = __LOCATIONS_JSON__;
 
-    const totalSigners = locations.reduce((sum, location) => sum + location.count, 0);
+    const totalSignatures = __TOTAL_SIGNATURES__;
     const maxCount = Math.max(...locations.map((location) => location.count));
-    document.getElementById("totalSigners").textContent = totalSigners.toLocaleString();
+    document.getElementById("totalSigners").textContent = totalSignatures.toLocaleString();
     document.getElementById("totalLocations").textContent = locations.length.toLocaleString();
 
     const map = L.map("map", {
@@ -606,7 +606,7 @@
         row.innerHTML = `
           <div class="place">
             <div class="city">${location.city}</div>
-            <div class="county">${place} - ${location.count.toLocaleString()} of ${totalSigners.toLocaleString()} signers</div>
+            <div class="county">${place} - ${location.count.toLocaleString()} of ${totalSignatures.toLocaleString()} signatures</div>
             <div class="bar-wrap" aria-hidden="true">
               <div class="bar" style="width: ${(location.count / maxCount) * 100}%"></div>
             </div>

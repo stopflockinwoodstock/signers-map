@@ -39,6 +39,16 @@ type MissingLocation = {
   count: number;
 };
 
+type AddLocationResult = "accepted" | "missingCity" | "invalidState";
+
+type SourceStats = {
+  rows: number;
+  accepted: number;
+  missingCity: number;
+  invalidState: number;
+  input: string;
+};
+
 const ROOT = process.cwd();
 const INPUT_DIR = path.join(ROOT, "input");
 const OUTPUT_DIR = path.join(ROOT, "dist");
@@ -46,7 +56,8 @@ const TEMPLATE_PATH = path.join(ROOT, "src", "template.html");
 const OVERRIDES_PATH = path.join(ROOT, "data", "city_overrides.csv");
 
 const INPUTS = {
-  paper: path.join(INPUT_DIR, "SFIW Petition.xlsx"),
+  paperCsv: path.join(INPUT_DIR, "SFIW Petition.csv"),
+  paperXlsx: path.join(INPUT_DIR, "SFIW Petition.xlsx"),
   online: path.join(INPUT_DIR, "petition_signatures_jobs_491242344_20260816223514.csv")
 };
 
@@ -104,38 +115,72 @@ function addLocation(
   cityRaw: unknown,
   countyRaw: unknown,
   stateRaw: unknown
-): boolean {
+): AddLocationResult {
   const city = cityName(cityRaw);
   const state = stateCode(stateRaw);
   const county = clean(countyRaw);
-  if (!city || !/^[A-Z]{2}$/.test(state)) return false;
+  if (!city) return "missingCity";
+  if (!/^[A-Z]{2}$/.test(state)) return "invalidState";
 
   const key = cityKey(city, state);
   const location = locations.get(key) ?? { city, state, count: 0, counties: new Map<string, number>() };
   location.count += 1;
   if (county) location.counties.set(county, (location.counties.get(county) ?? 0) + 1);
   locations.set(key, location);
-  return true;
+  return "accepted";
 }
 
-function readPaper(locations: Map<CityKey, AggregateLocation>): number {
-  if (!fs.existsSync(INPUTS.paper)) return 0;
+function emptyStats(input: string): SourceStats {
+  return {
+    rows: 0,
+    accepted: 0,
+    missingCity: 0,
+    invalidState: 0,
+    input
+  };
+}
 
-  const workbook = XLSX.readFile(INPUTS.paper);
+function trackResult(stats: SourceStats, result: AddLocationResult): void {
+  stats.rows += 1;
+  stats[result] += 1;
+}
+
+function readPaperCsv(locations: Map<CityKey, AggregateLocation>): SourceStats | undefined {
+  if (!fs.existsSync(INPUTS.paperCsv)) return undefined;
+
+  const stats = emptyStats(path.relative(ROOT, INPUTS.paperCsv));
+  const rows = fs.readFileSync(INPUTS.paperCsv, "utf8").split(/\r?\n/).filter(Boolean);
+  for (const row of rows) {
+    const cells = row.split("\t");
+    if (cells[0] === "Name" && cells[1] === "City") continue;
+    trackResult(stats, addLocation(locations, cells[1], cells[2], cells[3]));
+  }
+  return stats;
+}
+
+function readPaperXlsx(locations: Map<CityKey, AggregateLocation>): SourceStats {
+  const stats = emptyStats(path.relative(ROOT, INPUTS.paperXlsx));
+  if (!fs.existsSync(INPUTS.paperXlsx)) return stats;
+
+  const workbook = XLSX.readFile(INPUTS.paperXlsx);
   const sheet = workbook.Sheets?.Paper ?? workbook.Sheets?.Sheet1;
   if (!sheet) throw new Error("Expected a sheet named 'Paper' in SFIW Petition.xlsx");
 
-  let count = 0;
   const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, blankrows: false });
   for (const row of rows) {
     if (row[0] === "Name" && row[1] === "City") continue;
-    if (addLocation(locations, row[1], row[2], row[3])) count += 1;
+    trackResult(stats, addLocation(locations, row[1], row[2], row[3]));
   }
-  return count;
+  return stats;
 }
 
-function readOnline(locations: Map<CityKey, AggregateLocation>): number {
-  if (!fs.existsSync(INPUTS.online)) return 0;
+function readPaper(locations: Map<CityKey, AggregateLocation>): SourceStats {
+  return readPaperCsv(locations) ?? readPaperXlsx(locations);
+}
+
+function readOnline(locations: Map<CityKey, AggregateLocation>): SourceStats {
+  const stats = emptyStats(path.relative(ROOT, INPUTS.online));
+  if (!fs.existsSync(INPUTS.online)) return stats;
 
   const rows = fs.readFileSync(INPUTS.online, "utf16le").split(/\r?\n/).filter(Boolean);
   const headers = rows.shift()?.split("\t") ?? [];
@@ -143,12 +188,11 @@ function readOnline(locations: Map<CityKey, AggregateLocation>): number {
   const stateIndex = headers.indexOf("State");
   if (cityIndex < 0 || stateIndex < 0) throw new Error("Online export must include City and State columns");
 
-  let count = 0;
   for (const row of rows) {
     const cells = row.split("\t");
-    if (addLocation(locations, cells[cityIndex], "", cells[stateIndex])) count += 1;
+    trackResult(stats, addLocation(locations, cells[cityIndex], "", cells[stateIndex]));
   }
-  return count;
+  return stats;
 }
 
 function parseOverrideCsv(): Map<CityKey, Coordinate> {
@@ -260,10 +304,28 @@ function writeMissingCsv(locations: MissingLocation[]): void {
   fs.writeFileSync(path.join(OUTPUT_DIR, "missing_coordinates.csv"), `${rows.map((row) => row.map(csvCell).join(",")).join("\n")}\n`);
 }
 
-function writeHtml(locations: MappedLocation[]): void {
+function buildTimestamp(): string {
+  const formatted = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Chicago",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true
+  }).format(new Date());
+  return `${formatted} CT`;
+}
+
+function writeHtml(locations: MappedLocation[], totalSignatures: number, updatedAt: string): void {
   const template = fs.readFileSync(TEMPLATE_PATH, "utf8");
   if (!template.includes("__LOCATIONS_JSON__")) throw new Error("Missing __LOCATIONS_JSON__ placeholder in src/template.html");
-  const html = template.replace("__LOCATIONS_JSON__", JSON.stringify(locations, null, 2));
+  if (!template.includes("__TOTAL_SIGNATURES__")) throw new Error("Missing __TOTAL_SIGNATURES__ placeholder in src/template.html");
+  if (!template.includes("__UPDATED_AT__")) throw new Error("Missing __UPDATED_AT__ placeholder in src/template.html");
+  const html = template
+    .replace("__LOCATIONS_JSON__", JSON.stringify(locations, null, 2))
+    .replace("__TOTAL_SIGNATURES__", String(totalSignatures))
+    .replace("__UPDATED_AT__", updatedAt);
   fs.writeFileSync(path.join(OUTPUT_DIR, "index.html"), html);
 }
 
@@ -281,12 +343,19 @@ const { mapped: mappedLocations, missing: missingLocations } = await mapLocation
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 writeCsv(mappedLocations);
 writeMissingCsv(missingLocations);
-writeHtml(mappedLocations);
+const mappedTotal = mappedLocations.reduce((sum, location) => sum + location.count, 0);
+const missingCoordinateTotal = missingLocations.reduce((sum, location) => sum + location.count, 0);
+const inputTotal = sources.paper.accepted + sources.online.accepted;
+const updatedAt = buildTimestamp();
+writeHtml(mappedLocations, inputTotal, updatedAt);
 
-const total = mappedLocations.reduce((sum, location) => sum + location.count, 0);
-console.log(`Built ${mappedLocations.length} aggregate locations for ${total} signers.`);
-console.log(`Source rows: paper=${sources.paper}, online=${sources.online}`);
+console.log(`Built ${mappedLocations.length} aggregate locations for ${mappedTotal} mapped signers.`);
+console.log(`Input rows: paper=${sources.paper.rows}, online=${sources.online.rows}`);
+console.log(`Accepted signer rows with city/state: paper=${sources.paper.accepted}, online=${sources.online.accepted}, total=${inputTotal}`);
+console.log(`Rows without city: paper=${sources.paper.missingCity}, online=${sources.online.missingCity}`);
+console.log(`Rows with invalid/missing state: paper=${sources.paper.invalidState}, online=${sources.online.invalidState}`);
+console.log(`Paper source: ${sources.paper.input}`);
+console.log(`Updated at: ${updatedAt}`);
 if (missingLocations.length) {
-  const missingTotal = missingLocations.reduce((sum, location) => sum + location.count, 0);
-  console.log(`Skipped ${missingLocations.length} locations / ${missingTotal} signers without coordinates. See dist/missing_coordinates.csv.`);
+  console.log(`Skipped ${missingLocations.length} locations / ${missingCoordinateTotal} signers without coordinates. See dist/missing_coordinates.csv.`);
 }
