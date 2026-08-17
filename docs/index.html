@@ -1,0 +1,2367 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stop Flock in Woodstock Signers</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172026;
+      --muted: #5b6670;
+      --line: #d9e0e6;
+      --panel: #ffffff;
+      --surface: #f6f8f9;
+      --accent: #ff174d;
+      --accent-strong: #d50032;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--surface);
+    }
+
+    .app {
+      height: 100vh;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      overflow: hidden;
+    }
+
+    #map {
+      height: 100vh;
+      width: 100%;
+      background: #dbe3e8;
+    }
+
+    /* Critical Leaflet layout rules. Keeping these local prevents broken tile
+       layout if the CDN stylesheet is delayed or blocked. */
+    .leaflet-container {
+      position: relative;
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      outline-style: none;
+    }
+
+    .leaflet-pane,
+    .leaflet-tile,
+    .leaflet-marker-icon,
+    .leaflet-marker-shadow,
+    .leaflet-tile-container,
+    .leaflet-pane > svg,
+    .leaflet-pane > canvas,
+    .leaflet-zoom-box,
+    .leaflet-image-layer,
+    .leaflet-layer {
+      position: absolute;
+      left: 0;
+      top: 0;
+    }
+
+    .leaflet-tile,
+    .leaflet-marker-icon,
+    .leaflet-marker-shadow {
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+
+    .leaflet-tile {
+      width: 256px;
+      height: 256px;
+      max-width: none;
+      max-height: none;
+      border: 0;
+      padding: 0;
+    }
+
+    .leaflet-tile-pane {
+      z-index: 200;
+    }
+
+    .leaflet-overlay-pane {
+      z-index: 400;
+    }
+
+    .leaflet-marker-pane {
+      z-index: 600;
+    }
+
+    .leaflet-tooltip-pane {
+      z-index: 650;
+    }
+
+    .leaflet-control {
+      position: relative;
+      z-index: 800;
+      pointer-events: auto;
+    }
+
+    .leaflet-top,
+    .leaflet-bottom {
+      position: absolute;
+      z-index: 1000;
+      pointer-events: none;
+    }
+
+    .leaflet-top {
+      top: 0;
+    }
+
+    .leaflet-right {
+      right: 0;
+    }
+
+    .leaflet-control-container .leaflet-control {
+      margin: 10px;
+    }
+
+    .panel {
+      height: 100vh;
+      overflow: hidden;
+      background: var(--panel);
+      border-left: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      padding: 22px 24px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: 24px;
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+
+    .subhead {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .stat {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfd;
+    }
+
+    .stat-label {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+
+    .stat-value {
+      margin-top: 5px;
+      font-size: 28px;
+      line-height: 1;
+      font-weight: 750;
+    }
+
+    .list {
+      overflow: auto;
+      padding: 14px 0 20px;
+    }
+
+    .source-note {
+      padding: 12px 24px 16px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .source-note a {
+      color: inherit;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 54px;
+      gap: 14px;
+      align-items: center;
+      padding: 9px 24px;
+      border-left: 4px solid transparent;
+    }
+
+    .row:hover {
+      background: #f4f7f9;
+      border-left-color: var(--accent);
+    }
+
+    .place {
+      min-width: 0;
+    }
+
+    .city {
+      font-size: 14px;
+      font-weight: 650;
+      line-height: 1.25;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .county {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+
+    .bar-wrap {
+      margin-top: 7px;
+      height: 5px;
+      background: #e8edf1;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+      border-radius: inherit;
+    }
+
+    .count {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-size: 15px;
+      font-weight: 750;
+    }
+
+    @media (max-width: 860px) {
+      .app {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(58vh, 1fr) auto;
+      }
+
+      #map {
+        height: 58vh;
+      }
+
+      .panel {
+        height: 42vh;
+        border-left: 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .list {
+        max-height: 38vh;
+      }
+
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section id="map" aria-label="Heat map of signer volume by city"></section>
+    <aside class="panel" aria-label="Signer counts by location">
+      <header class="header">
+        <h1>Stop Flock in Woodstock Signers</h1>
+      </header>
+      <section class="stats" aria-label="Summary statistics">
+        <div class="stat">
+          <div class="stat-label">Signers mapped</div>
+          <div class="stat-value" id="totalSigners">0</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Locations</div>
+          <div class="stat-value" id="totalLocations">0</div>
+        </div>
+      </section>
+      <section class="list" id="locationList" aria-label="Locations ranked by signer count"></section>
+      <footer class="source-note">
+        City coordinate data from <a href="https://github.com/dr5hn/countries-states-cities-database">Countries States Cities Database</a>, ODbL v1.0.
+      </footer>
+    </aside>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const locations = [
+  {
+    "city": "Woodstock",
+    "county": "Mchenry",
+    "state": "IL",
+    "count": 730,
+    "lat": 42.31474,
+    "lng": -88.4487,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Crystal Lake",
+    "county": "Mchenry",
+    "state": "IL",
+    "count": 101,
+    "lat": 42.24113,
+    "lng": -88.3162,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "McHenry",
+    "county": "Mchenry",
+    "state": "IL",
+    "count": 93,
+    "lat": 42.33335,
+    "lng": -88.26675,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Chicago",
+    "county": "",
+    "state": "IL",
+    "count": 61,
+    "lat": 41.85003,
+    "lng": -87.65005,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Wonder Lake",
+    "county": "Mchenry",
+    "state": "IL",
+    "count": 40,
+    "lat": 42.3853,
+    "lng": -88.34731,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Lake in the Hills",
+    "county": "Mchenry",
+    "state": "IL",
+    "count": 38,
+    "lat": 42.18169,
+    "lng": -88.33036,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Cary",
+    "county": "Mchenry",
+    "state": "IL",
+    "count": 29,
+    "lat": 42.21197,
+    "lng": -88.23814,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Milwaukee",
+    "county": "",
+    "state": "WI",
+    "count": 28,
+    "lat": 43.0389,
+    "lng": -87.90647,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Huntley",
+    "county": "Mchenry",
+    "state": "IL",
+    "count": 27,
+    "lat": 42.16808,
+    "lng": -88.42814,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Harvard",
+    "county": "Mchenry",
+    "state": "IL",
+    "count": 24,
+    "lat": 42.42224,
+    "lng": -88.61371,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Marengo",
+    "county": "Mchenry",
+    "state": "IL",
+    "count": 19,
+    "lat": 42.24863,
+    "lng": -88.60843,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Rockford",
+    "county": "",
+    "state": "IL",
+    "count": 18,
+    "lat": 42.27113,
+    "lng": -89.094,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Algonquin",
+    "county": "Mchenry",
+    "state": "IL",
+    "count": 15,
+    "lat": 42.16558,
+    "lng": -88.29425,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Elgin",
+    "county": "",
+    "state": "IL",
+    "count": 11,
+    "lat": 42.03725,
+    "lng": -88.28119,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Belvidere",
+    "county": "",
+    "state": "IL",
+    "count": 9,
+    "lat": 42.26391,
+    "lng": -88.84427,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Bull Valley",
+    "county": "Mchenry",
+    "state": "IL",
+    "count": 9,
+    "lat": 42.32058,
+    "lng": -88.35509,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "De Kalb",
+    "county": "",
+    "state": "IL",
+    "count": 8,
+    "lat": 41.92947,
+    "lng": -88.75036,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Delavan",
+    "county": "",
+    "state": "WI",
+    "count": 8,
+    "lat": 42.63307,
+    "lng": -88.64371,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Lakemoor",
+    "county": "Mchenry",
+    "state": "IL",
+    "count": 8,
+    "lat": 42.32863,
+    "lng": -88.19897,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Richmond",
+    "county": "Mchenry",
+    "state": "IL",
+    "count": 6,
+    "lat": 42.47585,
+    "lng": -88.30593,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Round Lake",
+    "county": "",
+    "state": "IL",
+    "count": 6,
+    "lat": 42.35336,
+    "lng": -88.09341,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Barrington",
+    "county": "",
+    "state": "IL",
+    "count": 5,
+    "lat": 42.15391,
+    "lng": -88.13619,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Glenview",
+    "county": "",
+    "state": "IL",
+    "count": 5,
+    "lat": 42.06975,
+    "lng": -87.78784,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Libertyville",
+    "county": "",
+    "state": "IL",
+    "count": 5,
+    "lat": 42.28308,
+    "lng": -87.95313,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Madison",
+    "county": "",
+    "state": "WI",
+    "count": 5,
+    "lat": 43.07305,
+    "lng": -89.40123,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Palatine",
+    "county": "",
+    "state": "IL",
+    "count": 5,
+    "lat": 42.1103,
+    "lng": -88.03424,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Fox Lake",
+    "county": "",
+    "state": "IL",
+    "count": 4,
+    "lat": 42.39669,
+    "lng": -88.1837,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Genoa City",
+    "county": "",
+    "state": "WI",
+    "count": 4,
+    "lat": 42.49835,
+    "lng": -88.32815,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Gilberts",
+    "county": "",
+    "state": "IL",
+    "count": 4,
+    "lat": 42.10336,
+    "lng": -88.37286,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Mundelein",
+    "county": "",
+    "state": "IL",
+    "count": 4,
+    "lat": 42.26308,
+    "lng": -88.00397,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Racine",
+    "county": "",
+    "state": "WI",
+    "count": 4,
+    "lat": 42.72613,
+    "lng": -87.78285,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Rolling Meadows",
+    "county": "",
+    "state": "IL",
+    "count": 4,
+    "lat": 42.08419,
+    "lng": -88.01313,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Schaumburg",
+    "county": "",
+    "state": "IL",
+    "count": 4,
+    "lat": 42.03336,
+    "lng": -88.08341,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "South Elgin",
+    "county": "",
+    "state": "IL",
+    "count": 4,
+    "lat": 41.99419,
+    "lng": -88.2923,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Spring Grove",
+    "county": "Mchenry",
+    "state": "IL",
+    "count": 4,
+    "lat": 42.44363,
+    "lng": -88.23648,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Arlington Heights",
+    "county": "",
+    "state": "IL",
+    "count": 3,
+    "lat": 42.08836,
+    "lng": -87.98063,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Bolingbrook",
+    "county": "",
+    "state": "IL",
+    "count": 3,
+    "lat": 41.69864,
+    "lng": -88.0684,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Brookfield",
+    "county": "",
+    "state": "WI",
+    "count": 3,
+    "lat": 43.06057,
+    "lng": -88.10648,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Burlington",
+    "county": "",
+    "state": "WI",
+    "count": 3,
+    "lat": 42.67807,
+    "lng": -88.2762,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Carpentersville",
+    "county": "",
+    "state": "IL",
+    "count": 3,
+    "lat": 42.12114,
+    "lng": -88.25786,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Dundee",
+    "county": "",
+    "state": "IL",
+    "count": 3,
+    "lat": 42.096197,
+    "lng": -88.290202,
+    "coordinateSource": "manual_override"
+  },
+  {
+    "city": "East Dundee",
+    "county": "",
+    "state": "IL",
+    "count": 3,
+    "lat": 42.09891,
+    "lng": -88.27147,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Johnsburg",
+    "county": "Mchenry",
+    "state": "IL",
+    "count": 3,
+    "lat": 42.38002,
+    "lng": -88.24203,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Joliet",
+    "county": "",
+    "state": "IL",
+    "count": 3,
+    "lat": 41.52519,
+    "lng": -88.0834,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Kenosha",
+    "county": "",
+    "state": "WI",
+    "count": 3,
+    "lat": 42.58474,
+    "lng": -87.82119,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Lake Villa",
+    "county": "",
+    "state": "IL",
+    "count": 3,
+    "lat": 42.41697,
+    "lng": -88.07397,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Pingree Grove",
+    "county": "",
+    "state": "IL",
+    "count": 3,
+    "lat": 42.06864,
+    "lng": -88.41342,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Roselle",
+    "county": "",
+    "state": "IL",
+    "count": 3,
+    "lat": 41.98475,
+    "lng": -88.07979,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "St. Charles",
+    "county": "",
+    "state": "IL",
+    "count": 3,
+    "lat": 41.91419,
+    "lng": -88.30869,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Wheeling",
+    "county": "",
+    "state": "IL",
+    "count": 3,
+    "lat": 42.13919,
+    "lng": -87.92896,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Antioch",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 42.47724,
+    "lng": -88.09564,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Appleton",
+    "county": "",
+    "state": "WI",
+    "count": 2,
+    "lat": 44.26193,
+    "lng": -88.41538,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Atlanta",
+    "county": "",
+    "state": "GA",
+    "count": 2,
+    "lat": 33.749,
+    "lng": -84.38798,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Bartlett",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 41.99503,
+    "lng": -88.18563,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Bradley",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 41.14198,
+    "lng": -87.86115,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Cicero",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 41.84559,
+    "lng": -87.75394,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Cudahy",
+    "county": "",
+    "state": "WI",
+    "count": 2,
+    "lat": 42.95974,
+    "lng": -87.86147,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Geneva",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 41.88753,
+    "lng": -88.30535,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Glen Ellyn",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 41.87753,
+    "lng": -88.06701,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Gurnee",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 42.3703,
+    "lng": -87.90202,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Hampshire",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 42.0978,
+    "lng": -88.53036,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Hebron",
+    "county": "Mchenry",
+    "state": "IL",
+    "count": 2,
+    "lat": 42.47169,
+    "lng": -88.43232,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Hoffman Estates",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 42.04281,
+    "lng": -88.0798,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Lake Geneva",
+    "county": "",
+    "state": "WI",
+    "count": 2,
+    "lat": 42.59168,
+    "lng": -88.43343,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Lake Mills",
+    "county": "",
+    "state": "WI",
+    "count": 2,
+    "lat": 43.08139,
+    "lng": -88.91177,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Lake Zurich",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 42.19697,
+    "lng": -88.09341,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Machesney Park",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 42.34724,
+    "lng": -89.039,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Macon",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 39.71282,
+    "lng": -88.99702,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "McCullom Lake",
+    "county": "Mchenry",
+    "state": "IL",
+    "count": 2,
+    "lat": 42.36835,
+    "lng": -88.29259,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Menomonee Falls",
+    "county": "",
+    "state": "WI",
+    "count": 2,
+    "lat": 43.1789,
+    "lng": -88.11731,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Milton",
+    "county": "",
+    "state": "WI",
+    "count": 2,
+    "lat": 42.77556,
+    "lng": -88.944,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Newark",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 41.53697,
+    "lng": -88.58341,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Oak Park",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 41.88503,
+    "lng": -87.7845,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Oakwood Hills",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 42.24641,
+    "lng": -88.24286,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Park Ridge",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 42.01114,
+    "lng": -87.84062,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Plainfield",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 41.62697,
+    "lng": -88.20395,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Poplar Grove",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 42.36835,
+    "lng": -88.82205,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Tinley Park",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 41.57337,
+    "lng": -87.78449,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Vernon Hills",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 42.21947,
+    "lng": -87.97952,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Waterford",
+    "county": "",
+    "state": "WI",
+    "count": 2,
+    "lat": 42.76307,
+    "lng": -88.21426,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Wauconda",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 42.25891,
+    "lng": -88.13925,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Waukegan",
+    "county": "",
+    "state": "IL",
+    "count": 2,
+    "lat": 42.36363,
+    "lng": -87.84479,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Waukesha",
+    "county": "",
+    "state": "WI",
+    "count": 2,
+    "lat": 43.01168,
+    "lng": -88.23148,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Albany",
+    "county": "",
+    "state": "OR",
+    "count": 1,
+    "lat": 44.63651,
+    "lng": -123.10593,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Andover",
+    "county": "",
+    "state": "MN",
+    "count": 1,
+    "lat": 45.2333,
+    "lng": -93.29134,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Ann Arbor",
+    "county": "",
+    "state": "MI",
+    "count": 1,
+    "lat": 42.27756,
+    "lng": -83.74088,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Arlington heights",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.08836,
+    "lng": -87.98063,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Aurora",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.76058,
+    "lng": -88.32007,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Bakersfield",
+    "county": "",
+    "state": "CA",
+    "count": 1,
+    "lat": 35.37329,
+    "lng": -119.01871,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Batavia",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.85003,
+    "lng": -88.31257,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Baton Rouge",
+    "county": "",
+    "state": "LA",
+    "count": 1,
+    "lat": 30.44332,
+    "lng": -91.18747,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Beloit",
+    "county": "",
+    "state": "WI",
+    "count": 1,
+    "lat": 42.50835,
+    "lng": -89.03178,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Berkeley",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.88892,
+    "lng": -87.9034,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Bloomfield",
+    "county": "",
+    "state": "IA",
+    "count": 1,
+    "lat": 40.75169,
+    "lng": -92.41491,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Bloomingdale",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.95753,
+    "lng": -88.0809,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Bloomington",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 40.4842,
+    "lng": -88.99369,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Buffalo Grove",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.15141,
+    "lng": -87.95979,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Burleson",
+    "county": "",
+    "state": "TX",
+    "count": 1,
+    "lat": 32.54208,
+    "lng": -97.32085,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Byron",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.12697,
+    "lng": -89.25566,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Campton Hills",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.9366,
+    "lng": -88.3975,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Capron",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.39974,
+    "lng": -88.74038,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Cedarburg",
+    "county": "",
+    "state": "WI",
+    "count": 1,
+    "lat": 43.29667,
+    "lng": -87.98759,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Center",
+    "county": "",
+    "state": "TX",
+    "count": 1,
+    "lat": 31.79545,
+    "lng": -94.17909,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Center Line",
+    "county": "",
+    "state": "AL",
+    "count": 1,
+    "lat": 33.645658,
+    "lng": -86.6836,
+    "coordinateSource": "manual_override"
+  },
+  {
+    "city": "Chicago Ridge",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.70142,
+    "lng": -87.77922,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "China Grove",
+    "county": "",
+    "state": "NC",
+    "count": 1,
+    "lat": 35.56931,
+    "lng": -80.58173,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Crestview",
+    "county": "",
+    "state": "FL",
+    "count": 1,
+    "lat": 30.76213,
+    "lng": -86.57051,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Decker",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 38.635,
+    "lng": -88.213889,
+    "coordinateSource": "manual_override"
+  },
+  {
+    "city": "Deerfield",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.17114,
+    "lng": -87.84451,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Des Plaines",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.03336,
+    "lng": -87.8834,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Desloge",
+    "county": "",
+    "state": "MO",
+    "count": 1,
+    "lat": 37.87088,
+    "lng": -90.52735,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Detroit",
+    "county": "",
+    "state": "MI",
+    "count": 1,
+    "lat": 42.33143,
+    "lng": -83.04575,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Dixon",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.83892,
+    "lng": -89.47955,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Downers Grove",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.80892,
+    "lng": -88.01117,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Dubuque",
+    "county": "",
+    "state": "IA",
+    "count": 1,
+    "lat": 42.50056,
+    "lng": -90.66457,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Dyer",
+    "county": "",
+    "state": "IN",
+    "count": 1,
+    "lat": 41.4942,
+    "lng": -87.52171,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Earlville",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.58948,
+    "lng": -88.92203,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Effingham",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 39.12004,
+    "lng": -88.54338,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "El Paso",
+    "county": "",
+    "state": "TX",
+    "count": 1,
+    "lat": 31.75872,
+    "lng": -106.48693,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Elkhorn",
+    "county": "",
+    "state": "WI",
+    "count": 1,
+    "lat": 42.67279,
+    "lng": -88.54454,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Endeavor",
+    "county": "",
+    "state": "WI",
+    "count": 1,
+    "lat": 43.696305,
+    "lng": -89.461699,
+    "coordinateSource": "manual_override"
+  },
+  {
+    "city": "Enterprise",
+    "county": "",
+    "state": "AL",
+    "count": 1,
+    "lat": 31.31517,
+    "lng": -85.85522,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Eugene",
+    "county": "",
+    "state": "OR",
+    "count": 1,
+    "lat": 44.05207,
+    "lng": -123.08675,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Evansville",
+    "county": "",
+    "state": "WI",
+    "count": 1,
+    "lat": 42.78028,
+    "lng": -89.29928,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Fort Collins",
+    "county": "",
+    "state": "CO",
+    "count": 1,
+    "lat": 40.58526,
+    "lng": -105.08442,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Fox Point",
+    "county": "",
+    "state": "WI",
+    "count": 1,
+    "lat": 43.15751,
+    "lng": -87.90175,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Franklin",
+    "county": "",
+    "state": "WI",
+    "count": 1,
+    "lat": 42.88863,
+    "lng": -88.03842,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Fuquay-Varina",
+    "county": "",
+    "state": "NC",
+    "count": 1,
+    "lat": 35.58432,
+    "lng": -78.80001,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Genoa",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.09725,
+    "lng": -88.69287,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Goshen",
+    "county": "",
+    "state": "IN",
+    "count": 1,
+    "lat": 41.58227,
+    "lng": -85.83444,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Grayslake",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.34447,
+    "lng": -88.04175,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Hanover Park",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.99947,
+    "lng": -88.14507,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Hartland",
+    "county": "",
+    "state": "WI",
+    "count": 1,
+    "lat": 43.10501,
+    "lng": -88.34204,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Hendersonville",
+    "county": "",
+    "state": "NC",
+    "count": 1,
+    "lat": 35.31873,
+    "lng": -82.46095,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Highland Park",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.18169,
+    "lng": -87.80034,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Houston",
+    "county": "",
+    "state": "TX",
+    "count": 1,
+    "lat": 29.76328,
+    "lng": -95.36327,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Ingleside",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.363093,
+    "lng": -88.158749,
+    "coordinateSource": "manual_override"
+  },
+  {
+    "city": "Inverness",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.11808,
+    "lng": -88.09619,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Iron river",
+    "county": "",
+    "state": "MI",
+    "count": 1,
+    "lat": 46.09273,
+    "lng": -88.64235,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Island Lake",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.27613,
+    "lng": -88.19203,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Janesville",
+    "county": "",
+    "state": "WI",
+    "count": 1,
+    "lat": 42.68279,
+    "lng": -89.01872,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Justice",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.74448,
+    "lng": -87.83783,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "La Salle",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.33337,
+    "lng": -89.09175,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Lake Forest",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.25863,
+    "lng": -87.84063,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Lavonia",
+    "county": "",
+    "state": "GA",
+    "count": 1,
+    "lat": 34.43594,
+    "lng": -83.10682,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Lemont",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.67364,
+    "lng": -88.00173,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Lisle",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.80114,
+    "lng": -88.07479,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Lockport",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.58948,
+    "lng": -88.05784,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Los Angeles",
+    "county": "",
+    "state": "CA",
+    "count": 1,
+    "lat": 34.05223,
+    "lng": -118.24368,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Loveland",
+    "county": "",
+    "state": "CO",
+    "count": 1,
+    "lat": 40.39776,
+    "lng": -105.07498,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Loves park",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.32002,
+    "lng": -89.05816,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Loves Park",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.32002,
+    "lng": -89.05816,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Mahomet",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 40.19531,
+    "lng": -88.40422,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Malta",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.92975,
+    "lng": -88.86092,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Melrose Park",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.90059,
+    "lng": -87.85673,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Morgantown",
+    "county": "",
+    "state": "KY",
+    "count": 1,
+    "lat": 37.2256,
+    "lng": -86.6836,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Morton Grove",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.04059,
+    "lng": -87.78256,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Mount Morris",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.05031,
+    "lng": -89.43122,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Mount Prospect",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.06642,
+    "lng": -87.93729,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Mukwonago",
+    "county": "",
+    "state": "WI",
+    "count": 1,
+    "lat": 42.86668,
+    "lng": -88.33343,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Murphysboro",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 37.7645,
+    "lng": -89.33509,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Muscatine",
+    "county": "",
+    "state": "IA",
+    "count": 1,
+    "lat": 41.42447,
+    "lng": -91.04321,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Muskego",
+    "county": "",
+    "state": "WI",
+    "count": 1,
+    "lat": 42.90585,
+    "lng": -88.13898,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Naperville",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.78586,
+    "lng": -88.14729,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Nebraska City",
+    "county": "",
+    "state": "NE",
+    "count": 1,
+    "lat": 40.67667,
+    "lng": -95.85917,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Newark",
+    "county": "",
+    "state": "NJ",
+    "count": 1,
+    "lat": 40.73566,
+    "lng": -74.17237,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "North Barrington",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.2078,
+    "lng": -88.14063,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Northbrook",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.12753,
+    "lng": -87.82895,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Oconomowoc",
+    "county": "",
+    "state": "WI",
+    "count": 1,
+    "lat": 43.11167,
+    "lng": -88.49927,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Omaha",
+    "county": "",
+    "state": "NE",
+    "count": 1,
+    "lat": 41.25626,
+    "lng": -95.94043,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Orlando",
+    "county": "",
+    "state": "FL",
+    "count": 1,
+    "lat": 28.53834,
+    "lng": -81.37924,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Palos Heights",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.66809,
+    "lng": -87.79644,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Pasadena",
+    "county": "",
+    "state": "MD",
+    "count": 1,
+    "lat": 39.10733,
+    "lng": -76.57108,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Pecatonica",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.31391,
+    "lng": -89.35928,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Peoria",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 40.69365,
+    "lng": -89.58899,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Plano",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.66281,
+    "lng": -88.53702,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Pleasant Prairie",
+    "county": "",
+    "state": "WI",
+    "count": 1,
+    "lat": 42.55308,
+    "lng": -87.93341,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Portland",
+    "county": "",
+    "state": "OR",
+    "count": 1,
+    "lat": 45.52345,
+    "lng": -122.67621,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Princeton",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.36809,
+    "lng": -89.46481,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Raleigh",
+    "county": "",
+    "state": "NC",
+    "count": 1,
+    "lat": 35.7721,
+    "lng": -78.63861,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "River Forest",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.89781,
+    "lng": -87.81395,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Riverside",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.83503,
+    "lng": -87.82284,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Roscoe",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.41335,
+    "lng": -89.00927,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Round Lake Beach",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.37169,
+    "lng": -88.09008,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Round Lake Heights",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.38002,
+    "lng": -88.10425,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Round Lake Park",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.35697,
+    "lng": -88.07675,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Sacramento",
+    "county": "",
+    "state": "CA",
+    "count": 1,
+    "lat": 38.58157,
+    "lng": -121.4944,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Saint Charles",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.91419,
+    "lng": -88.30869,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Saint Louis",
+    "county": "",
+    "state": "MO",
+    "count": 1,
+    "lat": 38.6280278,
+    "lng": -90.1910154,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Salem",
+    "county": "",
+    "state": "WI",
+    "count": 1,
+    "lat": 42.55474,
+    "lng": -88.11092,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Salt Lake City",
+    "county": "",
+    "state": "UT",
+    "count": 1,
+    "lat": 40.76078,
+    "lng": -111.89105,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "San Diego",
+    "county": "",
+    "state": "CA",
+    "count": 1,
+    "lat": 32.71571,
+    "lng": -117.16472,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Shorewood",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.52003,
+    "lng": -88.20173,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Skokie",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.03336,
+    "lng": -87.73339,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Solon Mills",
+    "county": "Mchenry",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.4167,
+    "lng": -88.2959,
+    "coordinateSource": "manual_override"
+  },
+  {
+    "city": "Somonauk",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.63364,
+    "lng": -88.68119,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Southport",
+    "county": "",
+    "state": "NC",
+    "count": 1,
+    "lat": 33.92156,
+    "lng": -78.02027,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Springfield",
+    "county": "",
+    "state": "MA",
+    "count": 1,
+    "lat": 42.10148,
+    "lng": -72.58981,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Stillman Valley",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.10725,
+    "lng": -89.17927,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Sycamore",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.98892,
+    "lng": -88.68675,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Tenafly",
+    "county": "",
+    "state": "NJ",
+    "count": 1,
+    "lat": 40.92538,
+    "lng": -73.96292,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Tomah",
+    "county": "",
+    "state": "WI",
+    "count": 1,
+    "lat": 43.97858,
+    "lng": -90.50402,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Trempealeau",
+    "county": "",
+    "state": "WI",
+    "count": 1,
+    "lat": 44.00552,
+    "lng": -91.44209,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Twin Lakes",
+    "county": "",
+    "state": "WI",
+    "count": 1,
+    "lat": 42.53113,
+    "lng": -88.24815,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Villa Park",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.88975,
+    "lng": -87.98895,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Village of Lakewood",
+    "county": "Mchenry",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.22919,
+    "lng": -88.35509,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Volo",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.32613,
+    "lng": -88.16786,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Washington",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 40.70365,
+    "lng": -89.40731,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "West Allis",
+    "county": "",
+    "state": "WI",
+    "count": 1,
+    "lat": 43.01668,
+    "lng": -88.00703,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "West Dundee",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.09808,
+    "lng": -88.28286,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Whitewater",
+    "county": "",
+    "state": "WI",
+    "count": 1,
+    "lat": 42.83362,
+    "lng": -88.73233,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Williams Bay",
+    "county": "",
+    "state": "WI",
+    "count": 1,
+    "lat": 42.57807,
+    "lng": -88.54093,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Wilmette",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.07225,
+    "lng": -87.72284,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Winthrop Harbor",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.47891,
+    "lng": -87.82368,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Woodstock",
+    "county": "",
+    "state": "GA",
+    "count": 1,
+    "lat": 34.10149,
+    "lng": -84.51938,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Yorkville",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 41.64114,
+    "lng": -88.44729,
+    "coordinateSource": "@countrystatecity/countries"
+  },
+  {
+    "city": "Zion",
+    "county": "",
+    "state": "IL",
+    "count": 1,
+    "lat": 42.44613,
+    "lng": -87.83285,
+    "coordinateSource": "@countrystatecity/countries"
+  }
+];
+
+    const totalSigners = locations.reduce((sum, location) => sum + location.count, 0);
+    const maxCount = Math.max(...locations.map((location) => location.count));
+    document.getElementById("totalSigners").textContent = totalSigners.toLocaleString();
+    document.getElementById("totalLocations").textContent = locations.length.toLocaleString();
+
+    const map = L.map("map", {
+      zoomControl: false,
+      preferCanvas: true
+    });
+
+    L.control.zoom({ position: "topright" }).addTo(map);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+
+    const mchenryLocations = locations.filter((location) => location.county.toLowerCase() === "mchenry");
+    const bounds = L.latLngBounds(mchenryLocations.map((location) => [location.lat, location.lng]));
+    map.fitBounds(bounds.pad(0.18));
+    requestAnimationFrame(() => map.invalidateSize());
+
+    function seededUnit(seed) {
+      const x = Math.sin(seed * 9301 + 49297) * 233280;
+      return x - Math.floor(x);
+    }
+
+    function jitteredPoint(location, index) {
+      const angle = seededUnit(index + location.lat * 1000) * Math.PI * 2;
+      const spreadMeters = 1450 + Math.sqrt(location.count) * 360;
+      const distanceSeed = (
+        seededUnit(index + location.lng * 1000) +
+        seededUnit(index * 1.37 + location.lat * 1000) +
+        seededUnit(index * 2.11 + location.lng * 500)
+      ) / 3;
+      const distanceMeters = Math.pow(distanceSeed, 2.15) * spreadMeters;
+      const northMeters = Math.sin(angle) * distanceMeters;
+      const eastMeters = Math.cos(angle) * distanceMeters;
+      const lat = location.lat + northMeters / 111320;
+      const lng = location.lng + eastMeters / (111320 * Math.cos(location.lat * Math.PI / 180));
+      return L.latLng(lat, lng);
+    }
+
+    const pointRenderer = L.canvas({ padding: 0.5 });
+    const signerLayer = L.layerGroup().addTo(map);
+
+    function drawSignerPoints() {
+      let signerIndex = 0;
+      for (const location of locations) {
+        for (let i = 0; i < location.count; i += 1) {
+          signerIndex += 1;
+          const latLng = jitteredPoint(location, signerIndex);
+          L.circleMarker(latLng, {
+            radius: 10,
+            color: "#ff174d",
+            weight: 1.5,
+            opacity: 0.8,
+            fillColor: "#ff174d",
+            fillOpacity: 0.1,
+            interactive: false,
+            renderer: pointRenderer
+          }).addTo(signerLayer);
+        }
+      }
+    }
+
+    function drawTooltips() {
+      for (const location of locations) {
+        L.circleMarker([location.lat, location.lng], {
+          radius: 10,
+          stroke: false,
+          fillOpacity: 0,
+          keyboard: false
+        })
+          .bindTooltip(`${location.city}, ${location.state}: ${location.count.toLocaleString()} signers`, {
+            direction: "top",
+            sticky: true
+          })
+          .addTo(map);
+      }
+    }
+
+    function drawLocationList() {
+      const list = document.getElementById("locationList");
+      list.innerHTML = "";
+      for (const location of locations) {
+        const row = document.createElement("article");
+        row.className = "row";
+        const place = location.county ? `${location.county} County, ${location.state}` : location.state;
+        row.innerHTML = `
+          <div class="place">
+            <div class="city">${location.city}</div>
+            <div class="county">${place} - ${location.count.toLocaleString()} of ${totalSigners.toLocaleString()} signers</div>
+            <div class="bar-wrap" aria-hidden="true">
+              <div class="bar" style="width: ${(location.count / maxCount) * 100}%"></div>
+            </div>
+          </div>
+          <div class="count">${location.count.toLocaleString()}</div>
+        `;
+        list.appendChild(row);
+      }
+    }
+
+    drawSignerPoints();
+    drawTooltips();
+    drawLocationList();
+  </script>
+</body>
+</html>
