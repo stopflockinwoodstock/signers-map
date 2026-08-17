@@ -251,40 +251,6 @@
       font-weight: 750;
     }
 
-    .legend {
-      position: absolute;
-      z-index: 600;
-      left: 18px;
-      bottom: 18px;
-      width: 250px;
-      padding: 12px 14px;
-      background: rgba(255, 255, 255, 0.94);
-      border: 1px solid rgba(23, 32, 38, 0.14);
-      border-radius: 8px;
-      box-shadow: 0 8px 24px rgba(23, 32, 38, 0.14);
-      font-size: 12px;
-      line-height: 1.35;
-    }
-
-    .legend-title {
-      margin-bottom: 8px;
-      font-weight: 750;
-      font-size: 13px;
-    }
-
-    .ramp {
-      height: 10px;
-      border-radius: 999px;
-      background: linear-gradient(90deg, #ffd1dc, #ff5f7f, #ff174d, #d50032);
-      margin-bottom: 7px;
-    }
-
-    .legend-scale {
-      display: flex;
-      justify-content: space-between;
-      color: var(--muted);
-    }
-
     @media (max-width: 860px) {
       .app {
         grid-template-columns: 1fr;
@@ -305,11 +271,6 @@
         max-height: 38vh;
       }
 
-      .legend {
-        width: 220px;
-        left: 12px;
-        bottom: 12px;
-      }
     }
   </style>
 </head>
@@ -337,15 +298,6 @@
       </footer>
     </aside>
   </main>
-
-  <div class="legend" aria-hidden="true">
-    <div class="legend-title">Signer density</div>
-    <div class="ramp"></div>
-    <div class="legend-scale">
-      <span>Fewer points</span>
-      <span>More points</span>
-    </div>
-  </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
