@@ -61,7 +61,7 @@ const OVERRIDES_PATH = path.join(ROOT, "data", "city_overrides.csv");
 const INPUTS = {
   paperCsv: path.join(INPUT_DIR, "SFIW Petition.csv"),
   paperXlsx: path.join(INPUT_DIR, "SFIW Petition.xlsx"),
-  online: path.join(INPUT_DIR, "petition_signatures_jobs_491242344_20260818002741.csv")
+  online: path.join(INPUT_DIR, "online-petition-signatures-202608181200.csv")
 };
 
 const CITY_FIXES = new Map<string, string>([
@@ -371,7 +371,7 @@ writeCsv(mappedLocations);
 writeMissingCsv(missingLocations);
 const mappedTotal = mappedLocations.reduce((sum, location) => sum + location.count, 0);
 const missingCoordinateTotal = missingLocations.reduce((sum, location) => sum + location.count, 0);
-const inputTotal = sources.paper.accepted + sources.online.accepted;
+const inputTotal = sources.paper.rows + sources.online.rows;
 const updatedAt = buildTimestamp();
 writeHtml(mappedLocations, inputTotal, updatedAt);
 
