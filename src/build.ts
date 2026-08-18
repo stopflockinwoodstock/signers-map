@@ -72,7 +72,8 @@ const CITY_FIXES = new Map<string, string>([
   ["s. elgin", "South Elgin"],
   ["spring grove", "Spring Grove"],
   ["wonder lake", "Wonder Lake"],
-  ["woodstock il 60098", "Woodstock"]
+  ["woodstock il 60098", "Woodstock"],
+  ["Charolette", "Charlotte"]
 ]);
 
 const PACKAGE_ALIASES = new Map<CityKey, CityKey>([
