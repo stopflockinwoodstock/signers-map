@@ -1,17 +1,18 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { getCitiesOfState, type ICity } from "@countrystatecity/countries";
+import { getAllCitiesOfCountry, getCitiesOfState, type ICity } from "@countrystatecity/countries";
 import type * as XLSXType from "xlsx";
 
 const require = createRequire(import.meta.url);
 const XLSX = require("xlsx") as typeof XLSXType;
 
-type CityKey = `${string}|${string}`;
+type CityKey = `${string}|${string}|${string}`;
 
 type AggregateLocation = {
   city: string;
   state: string;
+  country: string;
   count: number;
   counties: Map<string, number>;
 };
@@ -27,6 +28,7 @@ type MappedLocation = {
   city: string;
   county: string;
   state: string;
+  country: string;
   count: number;
   lat: number;
   lng: number;
@@ -36,6 +38,7 @@ type MappedLocation = {
 type MissingLocation = {
   city: string;
   state: string;
+  country: string;
   count: number;
 };
 
@@ -77,14 +80,24 @@ const CITY_FIXES = new Map<string, string>([
 ]);
 
 const PACKAGE_ALIASES = new Map<CityKey, CityKey>([
-  ["Campton Hills|IL", "Village of Campton Hills|IL"],
-  ["De Kalb|IL", "DeKalb|IL"],
-  ["Saint Louis|MO", "St. Louis|MO"],
-  ["St. Charles|IL", "Saint Charles|IL"],
-  ["Village of Lakewood|IL", "Lakewood|IL"]
+  ["Campton Hills|IL|US", "Village of Campton Hills|IL|US"],
+  ["De Kalb|IL|US", "DeKalb|IL|US"],
+  ["Saint Louis|MO|US", "St. Louis|MO|US"],
+  ["St. Charles|IL|US", "Saint Charles|IL|US"],
+  ["Village of Lakewood|IL|US", "Lakewood|IL|US"],
+  ["Newport|WLS|GB", "Newport|TOF|GB"]
 ]);
 
 const STATE_FIXES = new Map([["AA", "CA"]]);
+const COUNTRY_ALIASES = new Map([
+  ["ireland", "IE"],
+  ["mexico", "MX"],
+  ["netherlands", "NL"],
+  ["norway", "NO"],
+  ["united kingdom", "GB"],
+  ["united states", "US"],
+  ["usa", "US"]
+]);
 const IGNORED_CITY_VALUES = new Set(["", "city", "daesy ruiz", "illinois", "unknown"]);
 
 function titleCase(value: string): string {
@@ -107,24 +120,32 @@ function clean(raw: unknown): string {
   return String(raw ?? "").trim().replace(/^"|"$/g, "").trim().replace(/\s+/g, " ");
 }
 
-function cityKey(city: string, state: string): CityKey {
-  return `${city}|${state}`;
+function countryCode(raw: unknown): string {
+  const country = clean(raw);
+  const key = country.toLowerCase();
+  return COUNTRY_ALIASES.get(key) ?? country.toUpperCase();
+}
+
+function cityKey(city: string, state: string, country: string): CityKey {
+  return `${city}|${state}|${country}`;
 }
 
 function addLocation(
   locations: Map<CityKey, AggregateLocation>,
   cityRaw: unknown,
   countyRaw: unknown,
-  stateRaw: unknown
+  stateRaw: unknown,
+  countryRaw: unknown = "US"
 ): AddLocationResult {
   const city = cityName(cityRaw);
   const state = stateCode(stateRaw);
+  const country = countryCode(countryRaw);
   const county = clean(countyRaw);
   if (!city) return "missingCity";
-  if (!/^[A-Z]{2}$/.test(state)) return "invalidState";
+  if (!/^[A-Z]{2}$/.test(country) || (country === "US" && !/^[A-Z]{2}$/.test(state))) return "invalidState";
 
-  const key = cityKey(city, state);
-  const location = locations.get(key) ?? { city, state, count: 0, counties: new Map<string, number>() };
+  const key = cityKey(city, state, country);
+  const location = locations.get(key) ?? { city, state, country, count: 0, counties: new Map<string, number>() };
   location.count += 1;
   if (county) location.counties.set(county, (location.counties.get(county) ?? 0) + 1);
   locations.set(key, location);
@@ -154,7 +175,7 @@ function readPaperCsv(locations: Map<CityKey, AggregateLocation>): SourceStats |
   for (const row of rows) {
     const cells = row.split("\t");
     if (cells[0] === "Name" && cells[1] === "City") continue;
-    trackResult(stats, addLocation(locations, cells[1], cells[2], cells[3]));
+    trackResult(stats, addLocation(locations, cells[1], cells[2], cells[3], "US"));
   }
   return stats;
 }
@@ -170,7 +191,7 @@ function readPaperXlsx(locations: Map<CityKey, AggregateLocation>): SourceStats 
   const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, blankrows: false });
   for (const row of rows) {
     if (row[0] === "Name" && row[1] === "City") continue;
-    trackResult(stats, addLocation(locations, row[1], row[2], row[3]));
+    trackResult(stats, addLocation(locations, row[1], row[2], row[3], "US"));
   }
   return stats;
 }
@@ -187,11 +208,12 @@ function readOnline(locations: Map<CityKey, AggregateLocation>): SourceStats {
   const headers = rows.shift()?.split("\t") ?? [];
   const cityIndex = headers.indexOf("City");
   const stateIndex = headers.indexOf("State");
+  const countryIndex = headers.indexOf("Country");
   if (cityIndex < 0 || stateIndex < 0) throw new Error("Online export must include City and State columns");
 
   for (const row of rows) {
     const cells = row.split("\t");
-    trackResult(stats, addLocation(locations, cells[cityIndex], "", cells[stateIndex]));
+    trackResult(stats, addLocation(locations, cells[cityIndex], "", cells[stateIndex], countryIndex >= 0 ? cells[countryIndex] : "US"));
   }
   return stats;
 }
@@ -208,7 +230,7 @@ function parseOverrideCsv(): Map<CityKey, Coordinate> {
     const lat = Number(latRaw);
     const lng = Number(lngRaw);
     if (!city || !state || !Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-    overrides.set(cityKey(city, state), {
+    overrides.set(cityKey(city, state, countryCode("US")), {
       lat,
       lng,
       county: clean(countyRaw),
@@ -220,16 +242,17 @@ function parseOverrideCsv(): Map<CityKey, Coordinate> {
 
 const packageCityCache = new Map<string, Promise<ICity[]>>();
 
-function packageCities(state: string): Promise<ICity[]> {
-  if (!packageCityCache.has(state)) {
-    packageCityCache.set(state, getCitiesOfState("US", state));
+function packageCities(country: string, state: string): Promise<ICity[]> {
+  const key = `${country}|${state}`;
+  if (!packageCityCache.has(key)) {
+    packageCityCache.set(key, state ? getCitiesOfState(country, state) : getAllCitiesOfCountry(country));
   }
-  return packageCityCache.get(state)!;
+  return packageCityCache.get(key)!;
 }
 
-async function packageCoordinate(city: string, state: string): Promise<Coordinate | undefined> {
-  const [lookupCity, lookupState] = (PACKAGE_ALIASES.get(cityKey(city, state)) ?? cityKey(city, state)).split("|");
-  const match = (await packageCities(lookupState)).find((candidate) => candidate.name.toLowerCase() === lookupCity.toLowerCase());
+async function packageCoordinate(city: string, state: string, country: string): Promise<Coordinate | undefined> {
+  const [lookupCity, lookupState, lookupCountry] = (PACKAGE_ALIASES.get(cityKey(city, state, country)) ?? cityKey(city, state, country)).split("|");
+  const match = (await packageCities(lookupCountry, lookupState)).find((candidate) => candidate.name.toLowerCase() === lookupCity.toLowerCase());
   if (!match) return undefined;
 
   return {
@@ -253,9 +276,9 @@ async function mapLocations(locations: Map<CityKey, AggregateLocation>): Promise
   const missing: MissingLocation[] = [];
 
   for (const location of locations.values()) {
-    const coordinate = overrides.get(cityKey(location.city, location.state)) ?? await packageCoordinate(location.city, location.state);
+    const coordinate = overrides.get(cityKey(location.city, location.state, location.country)) ?? await packageCoordinate(location.city, location.state, location.country);
     if (!coordinate) {
-      missing.push({ city: location.city, state: location.state, count: location.count });
+      missing.push({ city: location.city, state: location.state, country: location.country, count: location.count });
       continue;
     }
 
@@ -263,6 +286,7 @@ async function mapLocations(locations: Map<CityKey, AggregateLocation>): Promise
       city: location.city,
       county: mostCommonCounty(location) || coordinate.county,
       state: location.state,
+      country: location.country,
       count: location.count,
       lat: coordinate.lat,
       lng: coordinate.lng,
@@ -283,11 +307,12 @@ function csvCell(value: string | number): string {
 
 function writeCsv(locations: MappedLocation[]): void {
   const rows = [
-    ["city", "county", "state", "signer_count", "latitude", "longitude", "coordinate_source"],
+    ["city", "county", "state", "country", "signer_count", "latitude", "longitude", "coordinate_source"],
     ...locations.map((location) => [
       location.city,
       location.county,
       location.state,
+      location.country,
       location.count,
       location.lat,
       location.lng,
@@ -299,8 +324,8 @@ function writeCsv(locations: MappedLocation[]): void {
 
 function writeMissingCsv(locations: MissingLocation[]): void {
   const rows = [
-    ["city", "state", "signer_count"],
-    ...locations.map((location) => [location.city, location.state, location.count])
+    ["city", "state", "country", "signer_count"],
+    ...locations.map((location) => [location.city, location.state, location.country, location.count])
   ];
   fs.writeFileSync(path.join(OUTPUT_DIR, "missing_coordinates.csv"), `${rows.map((row) => row.map(csvCell).join(",")).join("\n")}\n`);
 }
