@@ -61,7 +61,7 @@ const OVERRIDES_PATH = path.join(ROOT, "data", "city_overrides.csv");
 const INPUTS = {
   paperCsv: path.join(INPUT_DIR, "SFIW Petition.csv"),
   paperXlsx: path.join(INPUT_DIR, "SFIW Petition.xlsx"),
-  online: path.join(INPUT_DIR, "online-petition-signatures-202608181200.csv")
+  online: path.join(INPUT_DIR, "petition_signatures_jobs_491242344_20260818002741.csv")
 };
 
 const CITY_FIXES = new Map<string, string>([
