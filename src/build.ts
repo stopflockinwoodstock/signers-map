@@ -1,11 +1,6 @@
 import fs from "node:fs";
-import { createRequire } from "node:module";
 import path from "node:path";
 import { getAllCitiesOfCountry, getCitiesOfState, type ICity } from "@countrystatecity/countries";
-import type * as XLSXType from "xlsx";
-
-const require = createRequire(import.meta.url);
-const XLSX = require("xlsx") as typeof XLSXType;
 
 type CityKey = `${string}|${string}|${string}`;
 
@@ -60,7 +55,6 @@ const OVERRIDES_PATH = path.join(ROOT, "data", "city_overrides.csv");
 
 const INPUTS = {
   paperCsv: path.join(INPUT_DIR, "SFIW Petition.csv"),
-  paperXlsx: path.join(INPUT_DIR, "SFIW Petition.xlsx"),
   online: path.join(INPUT_DIR, "petition_signatures_jobs_491242344_20260818002741.csv")
 };
 
@@ -167,8 +161,10 @@ function trackResult(stats: SourceStats, result: AddLocationResult): void {
   stats[result] += 1;
 }
 
-function readPaperCsv(locations: Map<CityKey, AggregateLocation>): SourceStats | undefined {
-  if (!fs.existsSync(INPUTS.paperCsv)) return undefined;
+function readPaper(locations: Map<CityKey, AggregateLocation>): SourceStats {
+  if (!fs.existsSync(INPUTS.paperCsv)) {
+    throw new Error(`Missing required paper source: ${path.relative(ROOT, INPUTS.paperCsv)}`);
+  }
 
   const stats = emptyStats(path.relative(ROOT, INPUTS.paperCsv));
   const rows = fs.readFileSync(INPUTS.paperCsv, "utf8").split(/\r?\n/).filter(Boolean);
@@ -178,26 +174,6 @@ function readPaperCsv(locations: Map<CityKey, AggregateLocation>): SourceStats |
     trackResult(stats, addLocation(locations, cells[1], cells[2], cells[3], "US"));
   }
   return stats;
-}
-
-function readPaperXlsx(locations: Map<CityKey, AggregateLocation>): SourceStats {
-  const stats = emptyStats(path.relative(ROOT, INPUTS.paperXlsx));
-  if (!fs.existsSync(INPUTS.paperXlsx)) return stats;
-
-  const workbook = XLSX.readFile(INPUTS.paperXlsx);
-  const sheet = workbook.Sheets?.Paper ?? workbook.Sheets?.Sheet1;
-  if (!sheet) throw new Error("Expected a sheet named 'Paper' in SFIW Petition.xlsx");
-
-  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, blankrows: false });
-  for (const row of rows) {
-    if (row[0] === "Name" && row[1] === "City") continue;
-    trackResult(stats, addLocation(locations, row[1], row[2], row[3], "US"));
-  }
-  return stats;
-}
-
-function readPaper(locations: Map<CityKey, AggregateLocation>): SourceStats {
-  return readPaperCsv(locations) ?? readPaperXlsx(locations);
 }
 
 function readOnline(locations: Map<CityKey, AggregateLocation>): SourceStats {

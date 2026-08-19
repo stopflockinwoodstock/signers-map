@@ -6,5 +6,5 @@ This folder is ignored by Git except for this README and `.gitkeep`. Do not comm
 
 Expected files:
 
-- `SFIW Petition.xlsx`
+- `SFIW Petition.csv`
 - `petition_signatures_jobs_491242344_20260725164505.csv.xls`
