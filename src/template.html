@@ -395,6 +395,7 @@
         <div class="stat">
           <div class="stat-label">Signatures</div>
           <div class="stat-value" id="totalSigners">0</div>
+          <div class="stat-label">(paper + online)</div>
         </div>
         <div class="stat">
           <div class="stat-label">Locations</div>
@@ -677,16 +678,13 @@
 
     function drawTooltips() {
       for (const location of locations) {
-        const region = location.country === "US"
-          ? location.state
-          : [location.state, location.country].filter(Boolean).join(", ");
         L.circleMarker([location.lat, location.lng], {
           radius: 10,
           stroke: false,
           fillOpacity: 0,
           keyboard: false
         })
-          .bindTooltip(`${location.city}, ${region}: ${location.count.toLocaleString()} signers`, {
+          .bindTooltip(`${location.city}, ${location.state}: ${location.count.toLocaleString()} signers`, {
             direction: "top",
             sticky: true
           })
@@ -698,14 +696,9 @@
       const list = document.getElementById("locationList");
       list.innerHTML = "";
       for (const location of locations) {
-        const region = location.country === "US"
-          ? location.state
-          : [location.state, location.country].filter(Boolean).join(", ");
         const row = document.createElement("article");
         row.className = "row";
-        const place = location.county && location.country === "US"
-          ? `${location.county} County, ${region}`
-          : region;
+        const place = location.county ? `${location.county} County, ${location.state}` : location.state;
         row.innerHTML = `
           <div class="place">
             <div class="city">${location.city}</div>

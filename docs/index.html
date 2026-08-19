@@ -389,12 +389,13 @@
           </div>
         </div>
         <p class="header-note">Signer locations are randomized to protect privacy.</p>
-        <p class="header-note">Updated August 19, 2026 at 2:44 PM CT</p>
+        <p class="header-note">Updated August 19, 2026 at 2:48 PM CT</p>
       </header>
       <section class="stats" aria-label="Summary statistics">
         <div class="stat">
           <div class="stat-label">Signatures</div>
           <div class="stat-value" id="totalSigners">0</div>
+          <div class="stat-label">(paper + online)</div>
         </div>
         <div class="stat">
           <div class="stat-label">Locations</div>
@@ -416,7 +417,7 @@
     "county": "Mchenry",
     "state": "IL",
     "country": "US",
-    "count": 883,
+    "count": 901,
     "lat": 42.31474,
     "lng": -88.4487,
     "coordinateSource": "@countrystatecity/countries"
@@ -3008,16 +3009,13 @@
 
     function drawTooltips() {
       for (const location of locations) {
-        const region = location.country === "US"
-          ? location.state
-          : [location.state, location.country].filter(Boolean).join(", ");
         L.circleMarker([location.lat, location.lng], {
           radius: 10,
           stroke: false,
           fillOpacity: 0,
           keyboard: false
         })
-          .bindTooltip(`${location.city}, ${region}: ${location.count.toLocaleString()} signers`, {
+          .bindTooltip(`${location.city}, ${location.state}: ${location.count.toLocaleString()} signers`, {
             direction: "top",
             sticky: true
           })
@@ -3029,14 +3027,9 @@
       const list = document.getElementById("locationList");
       list.innerHTML = "";
       for (const location of locations) {
-        const region = location.country === "US"
-          ? location.state
-          : [location.state, location.country].filter(Boolean).join(", ");
         const row = document.createElement("article");
         row.className = "row";
-        const place = location.county && location.country === "US"
-          ? `${location.county} County, ${region}`
-          : region;
+        const place = location.county ? `${location.county} County, ${location.state}` : location.state;
         row.innerHTML = `
           <div class="place">
             <div class="city">${location.city}</div>
