@@ -145,15 +145,16 @@
     }
 
     .header {
-      padding: 16px 20px 14px;
+      padding: 12px 20px 10px;
       border-bottom: 1px solid var(--line);
     }
 
     .header-top {
       display: flex;
+      flex-direction: column;
       justify-content: space-between;
       align-items: flex-start;
-      gap: 16px;
+      gap: 8px;
     }
 
     .header-copy {
@@ -170,7 +171,7 @@
     }
 
     h1 {
-      margin: 0 0 10px;
+      margin: 0;
       font-size: 22px;
       line-height: 1.1;
       letter-spacing: 0;
@@ -185,11 +186,11 @@
 
     .header-links {
       display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 4px;
-      padding-top: 1px;
-      white-space: nowrap;
+      flex-wrap: nowrap;
+      align-items: stretch;
+      width: 100%;
+      gap: 6px;
+      padding-top: 0;
     }
 
     .header-link {
@@ -204,7 +205,7 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 7px 10px;
+      padding: 6px 8px;
       border-radius: 4px;
       background: var(--accent-strong);
       color: #ffffff;
@@ -212,10 +213,26 @@
       font-weight: 750;
       line-height: 1;
       text-decoration: none;
+      flex: 1 1 0;
+      min-width: 0;
+      text-align: center;
+      white-space: normal;
+      overflow-wrap: anywhere;
     }
 
     .header-cta:hover {
       background: var(--ink);
+    }
+
+    .header-cta-secondary {
+      border: 1px solid var(--accent-strong);
+      background: var(--panel);
+      color: var(--accent-strong);
+    }
+
+    .header-cta-secondary:hover {
+      background: var(--accent-strong);
+      color: #ffffff;
     }
 
     .header-link:hover {
@@ -336,11 +353,19 @@
       }
 
       .header-top {
-        gap: 12px;
+        gap: 8px;
       }
 
       .header-links {
-        gap: 2px;
+        gap: 6px;
+        padding-top: 0;
+      }
+
+      .header-cta {
+        padding-inline: 8px;
+        font-size: 11px;
+        text-align: center;
+        white-space: normal;
       }
 
       .header-link {
@@ -385,11 +410,12 @@
           </div>
           <div class="header-links" aria-label="Campaign links">
             <a class="header-cta" href="https://www.change.org/p/we-want-flock-safety-out-of-woodstock-il">Sign the petition</a>
-            <a class="header-link" href="https://stopflockinwoodstock.org/">stopflockinwoodstock.org</a>
+            <a class="header-cta header-cta-secondary" href="https://stopflockinwoodstock.org/">Get Updates</a>
+            <a class="header-cta header-cta-secondary" href="https://www.facebook.com/groups/3220098864829509/">Join FB Group</a>
           </div>
         </div>
         <p class="header-note">Signer locations are randomized to protect privacy.</p>
-        <p class="header-note">Updated August 19, 2026 at 2:48 PM CT</p>
+        <p class="header-note">Updated August 19, 2026 at 3:06 PM CT</p>
       </header>
       <section class="stats" aria-label="Summary statistics">
         <div class="stat">
@@ -2746,7 +2772,7 @@
 
     const totalSignatures = 2006;
     const maxCount = Math.max(...locations.map((location) => location.count));
-    document.getElementById("totalSigners").textContent = totalSignatures.toLocaleString();
+    document.getElementById("totalSigners").textContent = "0";
     document.getElementById("totalLocations").textContent = locations.length.toLocaleString();
 
     const map = L.map("map", {
@@ -2885,6 +2911,8 @@
 
       const animationStart = performance.now();
 
+      animateSignatureTotal(animationStart, reduceMotion, START_DELAY, END_DELAY);
+
       for (const location of locations) {
         for (let i = 0; i < location.count; i += 1) {
           signerIndex += 1;
@@ -2927,6 +2955,27 @@
           END_DELAY + DURATION
         );
       }
+    }
+
+    function animateSignatureTotal(animationStart, reduceMotion, startDelay, endDelay) {
+      const totalElement = document.getElementById("totalSigners");
+      if (reduceMotion) {
+        totalElement.textContent = totalSignatures.toLocaleString();
+        return;
+      }
+
+      const start = animationStart + startDelay;
+      const duration = endDelay - startDelay;
+
+      function frame(now) {
+        const progress = Math.min(1, Math.max(0, (now - start) / duration));
+        const plottedProgress = Math.pow(progress, 3);
+        totalElement.textContent = Math.round(totalSignatures * plottedProgress).toLocaleString();
+
+        if (progress < 1) requestAnimationFrame(frame);
+      }
+
+      requestAnimationFrame(frame);
     }
 
     function animateSignerPoints(
