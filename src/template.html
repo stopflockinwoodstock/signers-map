@@ -437,9 +437,39 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const locations = __LOCATIONS_JSON__;
+    (async () => {
+    let locations = __LOCATIONS_JSON__;
 
-    const totalSignatures = __TOTAL_SIGNATURES__;
+    const fallbackTotalSignatures = __TOTAL_SIGNATURES__;
+    const paperTotal = __PAPER_TOTAL__;
+    const onlineCountAtLastExport = __ONLINE_COUNT_AT_LAST_EXPORT__;
+    const woodstockCountAtLastExport = __WOODSTOCK_COUNT_AT_LAST_EXPORT__;
+    let totalSignatures = fallbackTotalSignatures;
+
+    try {
+      const response = await fetch(`live-signatures.json?ts=${Date.now()}`, {
+        cache: "no-store"
+      });
+      if (!response.ok) throw new Error(`Live signature data returned HTTP ${response.status}`);
+
+      const live = await response.json();
+      if (!Number.isSafeInteger(live.onlineSignatures) || live.onlineSignatures < 0) {
+        throw new Error("Live signature data contains an invalid count");
+      }
+
+      const onlineDelta = Math.max(0, live.onlineSignatures - onlineCountAtLastExport);
+      totalSignatures = paperTotal + live.onlineSignatures;
+      locations = locations.map((location) => {
+        if (location.city.toLowerCase() !== "woodstock" || location.state !== "IL") return location;
+        return {
+          ...location,
+          count: woodstockCountAtLastExport + Math.round(onlineDelta * 0.5)
+        };
+      });
+    } catch (error) {
+      console.warn("Using local signature totals.", error);
+    }
+
     const maxCount = Math.max(...locations.map((location) => location.count));
     document.getElementById("totalSigners").textContent = "0";
     document.getElementById("totalLocations").textContent = locations.length.toLocaleString();
@@ -765,6 +795,7 @@
     drawSignerPoints();
     drawTooltips();
     drawLocationList();
+    })();
   </script>
 </body>
 </html>

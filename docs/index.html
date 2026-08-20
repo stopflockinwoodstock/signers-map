@@ -415,7 +415,7 @@
           </div>
         </div>
         <p class="header-note">Signer locations are randomized to protect privacy.</p>
-        <p class="header-note">Updated August 19, 2026 at 11:14 PM CT</p>
+        <p class="header-note">Updated August 20, 2026 at 12:17 AM CT</p>
       </header>
       <section class="stats" aria-label="Summary statistics">
         <div class="stat">
@@ -437,13 +437,14 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const locations = [
+    (async () => {
+    let locations = [
   {
     "city": "Woodstock",
     "county": "Mchenry",
     "state": "IL",
     "country": "US",
-    "count": 901,
+    "count": 863,
     "lat": 42.31474,
     "lng": -88.4487,
     "coordinateSource": "@countrystatecity/countries"
@@ -2770,7 +2771,36 @@
   }
 ];
 
-    const totalSignatures = 2016;
+    const fallbackTotalSignatures = 1893;
+    const paperTotal = 788;
+    const onlineCountAtLastExport = 1105;
+    const woodstockCountAtLastExport = 863;
+    let totalSignatures = fallbackTotalSignatures;
+
+    try {
+      const response = await fetch(`live-signatures.json?ts=${Date.now()}`, {
+        cache: "no-store"
+      });
+      if (!response.ok) throw new Error(`Live signature data returned HTTP ${response.status}`);
+
+      const live = await response.json();
+      if (!Number.isSafeInteger(live.onlineSignatures) || live.onlineSignatures < 0) {
+        throw new Error("Live signature data contains an invalid count");
+      }
+
+      const onlineDelta = Math.max(0, live.onlineSignatures - onlineCountAtLastExport);
+      totalSignatures = paperTotal + live.onlineSignatures;
+      locations = locations.map((location) => {
+        if (location.city.toLowerCase() !== "woodstock" || location.state !== "IL") return location;
+        return {
+          ...location,
+          count: woodstockCountAtLastExport + Math.round(onlineDelta * 0.5)
+        };
+      });
+    } catch (error) {
+      console.warn("Using local signature totals.", error);
+    }
+
     const maxCount = Math.max(...locations.map((location) => location.count));
     document.getElementById("totalSigners").textContent = "0";
     document.getElementById("totalLocations").textContent = locations.length.toLocaleString();
@@ -3096,6 +3126,7 @@
     drawSignerPoints();
     drawTooltips();
     drawLocationList();
+    })();
   </script>
 </body>
 </html>

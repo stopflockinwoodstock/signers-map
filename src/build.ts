@@ -319,14 +319,27 @@ function buildTimestamp(): string {
   return `${formatted} CT`;
 }
 
-function writeHtml(locations: MappedLocation[], totalSignatures: number, updatedAt: string): void {
+function writeHtml(
+  locations: MappedLocation[],
+  totalSignatures: number,
+  paperTotal: number,
+  onlineCountAtLastExport: number,
+  woodstockCountAtLastExport: number,
+  updatedAt: string
+): void {
   const template = fs.readFileSync(TEMPLATE_PATH, "utf8");
   if (!template.includes("__LOCATIONS_JSON__")) throw new Error("Missing __LOCATIONS_JSON__ placeholder in src/template.html");
   if (!template.includes("__TOTAL_SIGNATURES__")) throw new Error("Missing __TOTAL_SIGNATURES__ placeholder in src/template.html");
+  if (!template.includes("__PAPER_TOTAL__")) throw new Error("Missing __PAPER_TOTAL__ placeholder in src/template.html");
+  if (!template.includes("__ONLINE_COUNT_AT_LAST_EXPORT__")) throw new Error("Missing __ONLINE_COUNT_AT_LAST_EXPORT__ placeholder in src/template.html");
+  if (!template.includes("__WOODSTOCK_COUNT_AT_LAST_EXPORT__")) throw new Error("Missing __WOODSTOCK_COUNT_AT_LAST_EXPORT__ placeholder in src/template.html");
   if (!template.includes("__UPDATED_AT__")) throw new Error("Missing __UPDATED_AT__ placeholder in src/template.html");
   const html = template
     .replace("__LOCATIONS_JSON__", JSON.stringify(locations, null, 2))
     .replace("__TOTAL_SIGNATURES__", String(totalSignatures))
+    .replace("__PAPER_TOTAL__", String(paperTotal))
+    .replace("__ONLINE_COUNT_AT_LAST_EXPORT__", String(onlineCountAtLastExport))
+    .replace("__WOODSTOCK_COUNT_AT_LAST_EXPORT__", String(woodstockCountAtLastExport))
     .replace("__UPDATED_AT__", updatedAt);
   fs.writeFileSync(path.join(OUTPUT_DIR, "index.html"), html);
 }
@@ -348,8 +361,11 @@ writeMissingCsv(missingLocations);
 const mappedTotal = mappedLocations.reduce((sum, location) => sum + location.count, 0);
 const missingCoordinateTotal = missingLocations.reduce((sum, location) => sum + location.count, 0);
 const inputTotal = sources.paper.rows + sources.online.rows;
+const paperTotal = sources.paper.rows;
+const onlineCountAtLastExport = sources.online.rows;
+const woodstockCountAtLastExport = aggregateLocations.get(cityKey("Woodstock", "IL", "US"))?.count ?? 0;
 const updatedAt = buildTimestamp();
-writeHtml(mappedLocations, inputTotal, updatedAt);
+writeHtml(mappedLocations, inputTotal, paperTotal, onlineCountAtLastExport, woodstockCountAtLastExport, updatedAt);
 
 console.log(`Built ${mappedLocations.length} aggregate locations for ${mappedTotal} mapped signers.`);
 console.log(`Input rows: paper=${sources.paper.rows}, online=${sources.online.rows}`);
