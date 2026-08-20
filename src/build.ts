@@ -50,6 +50,7 @@ type SourceStats = {
 const ROOT = process.cwd();
 const INPUT_DIR = path.join(ROOT, "input");
 const OUTPUT_DIR = path.join(ROOT, "dist");
+const HTML_OUTPUT_PATH = path.join(ROOT, "docs", "index.html");
 const TEMPLATE_PATH = path.join(ROOT, "src", "template.html");
 const OVERRIDES_PATH = path.join(ROOT, "data", "city_overrides.csv");
 
@@ -341,7 +342,7 @@ function writeHtml(
     .replace("__ONLINE_COUNT_AT_LAST_EXPORT__", String(onlineCountAtLastExport))
     .replace("__WOODSTOCK_COUNT_AT_LAST_EXPORT__", String(woodstockCountAtLastExport))
     .replace("__UPDATED_AT__", updatedAt);
-  fs.writeFileSync(path.join(OUTPUT_DIR, "index.html"), html);
+  fs.writeFileSync(HTML_OUTPUT_PATH, html);
 }
 
 const aggregateLocations = new Map<CityKey, AggregateLocation>();

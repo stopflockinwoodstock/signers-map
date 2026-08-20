@@ -15,14 +15,12 @@ Raw signer files stay local in `input/` and are ignored by Git. Published files 
 ```sh
 npm install
 npm run build
-cp dist/index.html docs/index.html
 ```
 
 The published GitHub Pages site is served from `main:/docs`.
 
 ## Outputs
 
-- `dist/index.html`
 - `dist/signer_city_locations.csv`
 - `dist/missing_coordinates.csv`
 - `docs/index.html`
