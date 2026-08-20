@@ -2,7 +2,7 @@ name: Update live signature count
 
 on:
   schedule:
-    - cron: "17 */2 * * *"
+    - cron: "02 */1 * * *"
   workflow_dispatch:
 
 permissions:
@@ -29,7 +29,7 @@ jobs:
             exit 0
           fi
           hour=$(TZ=America/Chicago date +%H)
-          if [ "$hour" -ge 7 ] && [ "$hour" -lt 23 ]; then
+          if [ "$hour" -ge 6 ] && [ "$hour" -lt 23 ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
