@@ -1,0 +1,56 @@
+name: Update live signature count
+
+on:
+  schedule:
+    - cron: "17 */2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-live-signatures
+  cancel-in-progress: true
+
+jobs:
+  update:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Check local hours
+        id: hours
+        run: |
+          hour=$(TZ=America/Chicago date +%H)
+          if [ "$hour" -ge 7 ] && [ "$hour" -lt 23 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node.js
+        if: steps.hours.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Fetch live signature count
+        if: steps.hours.outputs.run == 'true'
+        run: node scripts/update-live-signatures.mjs
+
+      - name: Commit updated JSON
+        if: steps.hours.outputs.run == 'true'
+        run: |
+          git config user.name "Woodstock-IL-Cameras"
+          git config user.email "317771352+Woodstock-IL-Cameras@users.noreply.github.com"
+          git add docs/live-signatures.json
+          if git diff --cached --quiet; then
+            echo "The live signature count has not changed."
+            exit 0
+          fi
+          git commit -m "Update live signature count"
+          git push origin main
