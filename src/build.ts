@@ -51,6 +51,7 @@ const ROOT = process.cwd();
 const INPUT_DIR = path.join(ROOT, "input");
 const OUTPUT_DIR = path.join(ROOT, "dist");
 const HTML_OUTPUT_PATH = path.join(ROOT, "docs", "index.html");
+const PAPER_SIGNATURES_OUTPUT_PATH = path.join(ROOT, "docs", "current-paper-signatures.json");
 const TEMPLATE_PATH = path.join(ROOT, "src", "template.html");
 const OVERRIDES_PATH = path.join(ROOT, "data", "city_overrides.csv");
 
@@ -366,6 +367,7 @@ const paperTotal = sources.paper.rows;
 const onlineCountAtLastExport = sources.online.rows;
 const woodstockCountAtLastExport = aggregateLocations.get(cityKey("Woodstock", "IL", "US"))?.count ?? 0;
 const updatedAt = buildTimestamp();
+fs.writeFileSync(PAPER_SIGNATURES_OUTPUT_PATH, `${JSON.stringify({ paperSignatures: paperTotal }, null, 2)}\n`);
 writeHtml(mappedLocations, inputTotal, paperTotal, onlineCountAtLastExport, woodstockCountAtLastExport, updatedAt);
 
 console.log(`Built ${mappedLocations.length} aggregate locations for ${mappedTotal} mapped signers.`);

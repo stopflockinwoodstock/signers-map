@@ -50,9 +50,9 @@ jobs:
         run: |
           git config user.name "Woodstock-IL-Cameras"
           git config user.email "317771352+Woodstock-IL-Cameras@users.noreply.github.com"
-          git add docs/live-signatures.json
+          git add docs/current-paper-signatures.json docs/live-signatures.json docs/live-signatures-history.json
           if git diff --cached --quiet; then
-            echo "The live signature count has not changed."
+            echo "The live signature data has not changed."
             exit 0
           fi
           git commit -m "Update live signature count"
