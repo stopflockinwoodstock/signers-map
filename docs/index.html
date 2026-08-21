@@ -275,6 +275,15 @@
       font-weight: 750;
     }
 
+    .signature-trend {
+      display: inline-block;
+      margin-left: 6px;
+      color: #16803c;
+      font-size: 14px;
+      font-weight: 750;
+      vertical-align: middle;
+    }
+
     .list {
       overflow: auto;
       padding: 14px 0 20px;
@@ -415,12 +424,12 @@
           </div>
         </div>
         <p class="header-note">Signer locations are randomized to protect privacy.</p>
-        <p class="header-note">Updated August 20, 2026 at 12:23 AM CT</p>
+        <p class="header-note" id="updatedAt">Updated August 21, 2026 at 5:55 PM CT</p>
       </header>
       <section class="stats" aria-label="Summary statistics">
         <div class="stat">
           <div class="stat-label">Signatures</div>
-          <div class="stat-value" id="totalSigners">0</div>
+          <div class="stat-value"><span id="totalSigners">0</span><span id="signatureTrend" class="signature-trend" hidden></span></div>
           <div class="stat-label">(paper + online)</div>
         </div>
         <div class="stat">
@@ -2778,18 +2787,37 @@
     let totalSignatures = fallbackTotalSignatures;
 
     try {
-      const response = await fetch(`live-signatures.json?ts=${Date.now()}`, {
+      const response = await fetch(`live-signatures-history.json?ts=${Date.now()}`, {
         cache: "no-store"
       });
-      if (!response.ok) throw new Error(`Live signature data returned HTTP ${response.status}`);
+      if (!response.ok) throw new Error(`Signature history returned HTTP ${response.status}`);
 
-      const live = await response.json();
-      if (!Number.isSafeInteger(live.onlineSignatures) || live.onlineSignatures < 0) {
-        throw new Error("Live signature data contains an invalid count");
+      const history = await response.json();
+      if (!Array.isArray(history) || !history.length) throw new Error("Signature history is empty");
+      const latest = history.at(-1);
+      if (!Number.isSafeInteger(latest.onlineSignatures) || latest.onlineSignatures < 0 ||
+          !Number.isSafeInteger(latest.paperSignatures) || latest.paperSignatures < 0 ||
+          !Number.isSafeInteger(latest.totalSignatures) ||
+          latest.totalSignatures !== latest.onlineSignatures + latest.paperSignatures) {
+        throw new Error("Signature history contains an invalid total");
       }
 
-      const onlineDelta = Math.max(0, live.onlineSignatures - onlineCountAtLastExport);
-      totalSignatures = paperTotal + live.onlineSignatures;
+      const onlineDelta = Math.max(0, latest.onlineSignatures - onlineCountAtLastExport);
+      totalSignatures = latest.totalSignatures;
+      const liveUpdatedAt = formatUpdatedAt(latest.fetchedAt);
+      if (liveUpdatedAt) document.getElementById("updatedAt").textContent = `Updated ${liveUpdatedAt}`;
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 14);
+      const baseline = history.find((entry) => new Date(`${entry.date}T00:00:00`) >= cutoff);
+      if (baseline) {
+        const increase = latest.totalSignatures - baseline.totalSignatures;
+        if (increase >= 10) {
+          const trend = document.getElementById("signatureTrend");
+          trend.textContent = `↑${increase.toLocaleString()}`;
+          trend.setAttribute("aria-label", `${increase.toLocaleString()} additional signatures in the last 14 days`);
+          trend.hidden = false;
+        }
+      }
       locations = locations.map((location) => {
         if (location.city.toLowerCase() !== "woodstock" || location.state !== "IL") return location;
         return {
@@ -2826,6 +2854,22 @@
     function seededUnit(seed) {
       const x = Math.sin(seed * 9301 + 49297) * 233280;
       return x - Math.floor(x);
+    }
+
+    function formatUpdatedAt(value) {
+      const date = new Date(value);
+      if (!Number.isFinite(date.getTime())) return "";
+
+      const formatted = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Chicago",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true
+      }).format(date);
+      return `${formatted} CT`;
     }
 
     function jitteredPoint(location, index) {
