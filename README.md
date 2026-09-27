@@ -30,3 +30,5 @@ Coordinates come from `@countrystatecity/countries`, with city-level fallbacks i
 ## Attribution
 
 City coordinates are backed by Countries States Cities Database: https://github.com/dr5hn/countries-states-cities-database
+
+.
