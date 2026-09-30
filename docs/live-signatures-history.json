@@ -96,5 +96,12 @@
     "paperSignatures": 873,
     "totalSignatures": 2341,
     "fetchedAt": "2026-09-29T15:28:41.795Z"
+  },
+  {
+    "date": "2026-09-30",
+    "onlineSignatures": 1469,
+    "paperSignatures": 873,
+    "totalSignatures": 2342,
+    "fetchedAt": "2026-09-30T13:24:47.723Z"
   }
 ]
