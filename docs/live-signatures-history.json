@@ -1,12 +1,5 @@
 [
   {
-    "date": "2026-08-23",
-    "onlineSignatures": 1315,
-    "paperSignatures": 788,
-    "totalSignatures": 2103,
-    "fetchedAt": "2026-08-24T03:33:33.574Z"
-  },
-  {
     "date": "2026-08-24",
     "onlineSignatures": 1333,
     "paperSignatures": 788,
@@ -103,5 +96,12 @@
     "paperSignatures": 873,
     "totalSignatures": 2348,
     "fetchedAt": "2026-10-03T20:44:42.178Z"
+  },
+  {
+    "date": "2026-10-04",
+    "onlineSignatures": 1475,
+    "paperSignatures": 873,
+    "totalSignatures": 2348,
+    "fetchedAt": "2026-10-04T15:44:53.418Z"
   }
 ]
